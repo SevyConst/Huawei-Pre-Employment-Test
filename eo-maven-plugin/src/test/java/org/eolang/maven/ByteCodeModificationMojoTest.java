@@ -1,3 +1,27 @@
+/*
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2016-2024 Objectionary.com
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included
+ * in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 package org.eolang.maven;
 
 import org.eolang.maven.util.HmBase;
@@ -5,11 +29,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.objectweb.asm.*;
 
-import java.io.File;
-import java.io.IOException;
+import javax.tools.*;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
 
 public class ByteCodeModificationMojoTest {
 
@@ -20,18 +48,19 @@ public class ByteCodeModificationMojoTest {
     private static final String CLASS_C_PATH_ASM = "org" + File.separator + "eolang" + File.separator + "C";
     private static final String CLASS_C_DESCRIPTOR = "L" + CLASS_C_PATH_ASM + ";";
 
+    public static Path SRC = Paths.get("src/test/resources/org/eolang/maven/bytecode-modification/");
+
+
     private static final String RELATIVE_INPUT_DIR = "target" + File.separator + "classes";
     private static final String RELATIVE_OUTPUT_DIR = "target" + File.separator + "modified-classes";
     private static final String HASH = "qwerty";
 
     @Test
     public void test(@TempDir final Path temp) throws Exception {
-        createByteCodeClassA(temp);
-        createByteCodeClassB(temp);
-        createByteCodeClassC(temp);
 
         Path inputDirPath = temp.resolve(RELATIVE_INPUT_DIR);
         Path outputDirPath = temp.resolve(RELATIVE_OUTPUT_DIR);
+        compile(temp);
 
         new FakeMaven(temp)
                 .with("inputDir", inputDirPath)
@@ -41,79 +70,6 @@ public class ByteCodeModificationMojoTest {
 
         Path outPathClassA = outputDirPath.resolve(HASH).resolve(CLASS_A_PATH_ASM);
         ClassReader classReader = new ClassReader(Files.readAllBytes(outPathClassA));
-
-        ClassVisitor checkingAClass = new ClassVisitor();
-
-
-    }
-
-    private void createByteCodeClassA(Path temp) throws IOException {
-        ClassWriter classWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS);
-        classWriter.visit(Opcodes.V1_8,
-                Opcodes.ACC_PUBLIC,
-                CLASS_A_PATH_ASM,
-                null,
-                ByteCodeModificationMojo.OBJECT_PATH_ASM,
-                null
-        );
-        classWriter.visitAnnotation(ByteCodeModificationMojo.PATH_TO_VERSIONIZED, true);
-        classWriter.visitField(
-                Opcodes.ACC_PRIVATE,
-                "b",
-                CLASS_B_DESCRIPTOR,
-                null,
-                null
-        );
-        classWriter.visitField(
-                Opcodes.ACC_PRIVATE,
-                "c",
-                CLASS_C_DESCRIPTOR,
-                null,
-                null
-        );
-
-        saveClassFile(temp, classWriter.toByteArray(), CLASS_A_PATH_ASM);
-    }
-
-    private void createByteCodeClassB(Path temp) throws IOException {
-        ClassWriter classWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS);
-        classWriter.visit(Opcodes.V1_8,
-                Opcodes.ACC_PUBLIC,
-                CLASS_B_PATH_ASM,
-                null,
-                ByteCodeModificationMojo.OBJECT_PATH_ASM,
-                null
-        );
-        classWriter.visitAnnotation(ByteCodeModificationMojo.PATH_TO_VERSIONIZED, true);
-        classWriter.visitField(
-                Opcodes.ACC_PRIVATE,
-                "c",
-                CLASS_C_DESCRIPTOR,
-                null,
-                null
-        );
-
-        saveClassFile(temp, classWriter.toByteArray(), CLASS_B_PATH_ASM);
-    }
-
-    private void createByteCodeClassC(Path temp) throws IOException {
-        ClassWriter classWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS);
-        classWriter.visit(Opcodes.V1_8,
-                Opcodes.ACC_PUBLIC,
-                CLASS_C_PATH_ASM,
-                null,
-                ByteCodeModificationMojo.OBJECT_PATH_ASM,
-                null
-        );
-        classWriter.visitField(
-                Opcodes.ACC_PRIVATE,
-                "a",
-                CLASS_A_DESCRIPTOR,
-                null,
-                null
-        );
-
-        saveClassFile(temp, classWriter.toByteArray(), CLASS_C_PATH_ASM);
     }
 
     private void saveClassFile(
@@ -124,25 +80,29 @@ public class ByteCodeModificationMojoTest {
                 .save(content, Paths.get( className + ByteCodeModificationMojo.EXTENSION_CLASS));
     }
 
-    static class ClassVisitorModificationMethod extends ClassVisitor {
+    private void compile(Path outputPath) throws IOException {
 
-        ClassVisitorModificationMethod() {
-            super(ByteCodeModificationMojo.OPCODE_ASM_VERSION);
-        }
+        List<Path> output2 = List.of(SRC);
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        StandardJavaFileManager fileManager = compiler.getStandardFileManager(null, null, null);
+        List<Path> output = new ArrayList<>();
+        output.add(SRC);
+        fileManager.setLocationFromPaths(StandardLocation.CLASS_OUTPUT, output);
+        Iterable<? extends JavaFileObject> compilationUnits = fileManager.getJavaFileObjectsFromPaths(Arrays.asList(
+                SRC.resolve("org").resolve("eolang").resolve("A.java"),
+                SRC.resolve("org").resolve("eolang").resolve("B.java"),
+                SRC.resolve("org").resolve("eolang").resolve("C.java"),
+                SRC.resolve("org").resolve("eolang").resolve("Versionized.java")
+        ));
+        compiler.getTask(null,
+                fileManager,
+                null,
+                List.of("-d " + outputPath.toAbsolutePath()),
+                null,
+                compilationUnits
+        ).call();
     }
 
-    static class ModificationMethod extends MethodVisitor {
-
-        protected ModificationMethod(int api) {
-            super(ByteCodeModificationMojo.OPCODE_ASM_VERSION);
-        }
-
-        @Override
-        public void visitCode() {
-            super.visitCode();
-            visitTypeInsn(Opcodes.NEW, "com");
-        }
-    }
 
 //    private class ClassFiller extends ClassVisitor {
 //        public ClassFiller() {
