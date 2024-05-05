@@ -3,11 +3,11 @@ package org.eolang.maven;
 import org.eolang.maven.util.HmBase;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.objectweb.asm.ClassWriter;
-import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.*;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
@@ -22,6 +22,7 @@ public class ByteCodeModificationMojoTest {
 
     private static final String RELATIVE_INPUT_DIR = "target" + File.separator + "classes";
     private static final String RELATIVE_OUTPUT_DIR = "target" + File.separator + "modified-classes";
+    private static final String HASH = "qwerty";
 
     @Test
     public void test(@TempDir final Path temp) throws Exception {
@@ -29,11 +30,21 @@ public class ByteCodeModificationMojoTest {
         createByteCodeClassB(temp);
         createByteCodeClassC(temp);
 
+        Path inputDirPath = temp.resolve(RELATIVE_INPUT_DIR);
+        Path outputDirPath = temp.resolve(RELATIVE_OUTPUT_DIR);
+
         new FakeMaven(temp)
-                .with("inputDir", temp.resolve(RELATIVE_INPUT_DIR))
-                .with("outputDir", temp.resolve(RELATIVE_OUTPUT_DIR))
-                .with("hash", "qwerty1")
+                .with("inputDir", inputDirPath)
+                .with("outputDir", outputDirPath)
+                .with("hash", HASH)
                 .execute(ByteCodeModificationMojo.class);
+
+        Path outPathClassA = outputDirPath.resolve(HASH).resolve(CLASS_A_PATH_ASM);
+        ClassReader classReader = new ClassReader(Files.readAllBytes(outPathClassA));
+
+        ClassVisitor checkingAClass = new ClassVisitor();
+
+
     }
 
     private void createByteCodeClassA(Path temp) throws IOException {
@@ -111,6 +122,26 @@ public class ByteCodeModificationMojoTest {
             final String className) throws IOException {
         new HmBase(temp.resolve(RELATIVE_INPUT_DIR))
                 .save(content, Paths.get( className + ByteCodeModificationMojo.EXTENSION_CLASS));
+    }
+
+    static class ClassVisitorModificationMethod extends ClassVisitor {
+
+        ClassVisitorModificationMethod() {
+            super(ByteCodeModificationMojo.OPCODE_ASM_VERSION);
+        }
+    }
+
+    static class ModificationMethod extends MethodVisitor {
+
+        protected ModificationMethod(int api) {
+            super(ByteCodeModificationMojo.OPCODE_ASM_VERSION);
+        }
+
+        @Override
+        public void visitCode() {
+            super.visitCode();
+            visitTypeInsn(Opcodes.NEW, "com");
+        }
     }
 
 //    private class ClassFiller extends ClassVisitor {

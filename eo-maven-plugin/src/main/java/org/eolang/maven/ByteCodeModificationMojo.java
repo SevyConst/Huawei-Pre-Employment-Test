@@ -38,7 +38,7 @@ public class ByteCodeModificationMojo extends SafeMojo{
     void exec() throws IOException {
         PathsTable pathsTable = copyVersionizedClasses();
         copyUsagesVersionized(pathsTable.inputSet, pathsTable.inOutAsmMap);
-        renameUsagesInVersionized(pathsTable.inOutAsmMap);
+        renameUsagesInVersionizedClasses(pathsTable.inOutAsmMap);
     }
 
     PathsTable copyVersionizedClasses() throws IOException {
@@ -75,7 +75,7 @@ public class ByteCodeModificationMojo extends SafeMojo{
         });
     }
 
-    void renameUsagesInVersionized(Map<String, String> inOutAsmMap) throws IOException {
+    void renameUsagesInVersionizedClasses(Map<String, String> inOutAsmMap) throws IOException {
         Files.walkFileTree(this.outputDir.resolve(this.hash), new SimpleFileVisitor<Path>() {
             @Override
             public FileVisitResult visitFile(Path inputPath, BasicFileAttributes attrs) throws IOException {
