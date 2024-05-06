@@ -22,9 +22,12 @@
  * SOFTWARE.
  */
 
-package org.eolang.test-interface;
+package org.eolang.other;
 
-@Versionized
-public interface InterfaceWithVersionized {
-    public void someMethod(int i);
+import org.eolang.interfaces.InterfaceVersionized;
+
+import java.util.List;
+
+class Generic {
+    void someMethod(List<? extends InterfaceVersionized> list) {}
 }

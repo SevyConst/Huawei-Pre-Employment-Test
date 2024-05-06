@@ -36,9 +36,7 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 
 
 public class ByteCodeModificationMojoTest {
@@ -93,13 +91,18 @@ public class ByteCodeModificationMojoTest {
         outputDirList.add(outputPath.toFile());
         fileManager.setLocation(StandardLocation.CLASS_OUTPUT, outputDirList);
 
-        List<File> filesToCompile = Arrays.asList(
-                SRC.resolve("org").resolve("eolang").resolve("A.java").toFile(),
-                SRC.resolve("org").resolve("eolang").resolve("B.java").toFile(),
-                SRC.resolve("org").resolve("eolang").resolve("C.java").toFile(),
-                SRC.resolve("org").resolve("eolang").resolve("Versionized.java").toFile(),
-                SRC.resolve("org").resolve("eolang").resolve("AnnotationWithVersionized.java").toFile()
-        );
+        List<File> filesToCompile = new ArrayList<>();
+        filesToCompile.add(SRC.resolve("org").resolve("eolang").resolve("interfaces").resolve("InterfaceVersionized.java").toFile());
+        filesToCompile.add(SRC.resolve("org").resolve("eolang").resolve("A.java").toFile());
+        filesToCompile.add(SRC.resolve("org").resolve("eolang").resolve("B.java").toFile());
+        filesToCompile.add(SRC.resolve("org").resolve("eolang").resolve("C.java").toFile());
+        filesToCompile.add(SRC.resolve("org").resolve("eolang").resolve("Versionized.java").toFile());
+        filesToCompile.add(SRC.resolve("org").resolve("eolang").resolve("annotations").resolve("AnnotationVersionized.java").toFile());
+        filesToCompile.add(SRC.resolve("org").resolve("eolang").resolve("other").resolve("LocalVariable.java").toFile());
+        filesToCompile.add(SRC.resolve("org").resolve("eolang").resolve("other").resolve("Generic.java").toFile());
+        filesToCompile.add(SRC.resolve("org").resolve("eolang").resolve("other").resolve("MethodSignature.java").toFile());
+        filesToCompile.add(SRC.resolve("org").resolve("eolang").resolve("other").resolve("VersionizedClass.java").toFile());
+
         Iterable<? extends JavaFileObject> compilationUnits = fileManager.getJavaFileObjectsFromFiles(filesToCompile);
         List<String> javacOptions = new ArrayList<>();
         javacOptions.add("-d");

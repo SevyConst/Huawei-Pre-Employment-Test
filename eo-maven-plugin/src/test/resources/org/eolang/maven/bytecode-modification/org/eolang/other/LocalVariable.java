@@ -22,15 +22,10 @@
  * SOFTWARE.
  */
 
-package org.eolang.annotations;
+package org.eolang.other;
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
-
-@Versionized
-@Target(ElementType.FIELD)
-@Retention(RetentionPolicy.SOURCE)
-public @interface AnnotationWithVersionized {
+class LocalVariable {
+    public void someMethod() {
+        VersionizedClass obj = new VersionizedClass();
+    }
 }
