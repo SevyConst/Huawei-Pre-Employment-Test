@@ -23,6 +23,7 @@
  */
 
 package org.eolang;
+
 @Versionized
 class A {
     B b;

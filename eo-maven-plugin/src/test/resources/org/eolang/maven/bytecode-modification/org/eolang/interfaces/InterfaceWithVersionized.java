@@ -22,9 +22,9 @@
  * SOFTWARE.
  */
 
-package org.eolang;
+package org.eolang.test-interface;
 
 @Versionized
-class B {
-    C c;
+public interface InterfaceWithVersionized {
+    public void someMethod(int i);
 }

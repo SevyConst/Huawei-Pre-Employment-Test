@@ -50,7 +50,7 @@ public class ByteCodeModificationMojoTest {
     private static final String CLASS_C_PATH_ASM = "org" + File.separator + "eolang" + File.separator + "C";
     private static final String CLASS_C_DESCRIPTOR = "L" + CLASS_C_PATH_ASM + ";";
 
-    public static File SRC = new File("src/test/resources/org/eolang/maven/bytecode-modification/");
+    public static Path SRC = Paths.get("src/test/resources/org/eolang/maven/bytecode-modification/");
 
 
     private static final String RELATIVE_INPUT_DIR = "target" + File.separator + "classes";
@@ -64,13 +64,13 @@ public class ByteCodeModificationMojoTest {
         Path outputDirPath = temp.resolve(RELATIVE_OUTPUT_DIR);
         compile(temp);
 
-//        new FakeMaven(temp)
-//                .with("inputDir", inputDirPath)
-//                .with("outputDir", outputDirPath)
-//                .with("hash", HASH)
-//                .execute(ByteCodeModificationMojo.class);
+        new FakeMaven(temp)
+                .with("inputDir", inputDirPath)
+                .with("outputDir", outputDirPath)
+                .with("hash", HASH)
+                .execute(ByteCodeModificationMojo.class);
 
-//        Path outPathClassA = outputDirPath.resolve(HASH).resolve(CLASS_A_PATH_ASM);
+        Path outPathClassA = outputDirPath.resolve(HASH).resolve(CLASS_A_PATH_ASM);
 //        ClassReader classReader = new ClassReader(Files.readAllBytes(outPathClassA));
     }
 
@@ -83,35 +83,34 @@ public class ByteCodeModificationMojoTest {
     }
 
     private void compile(Path outputPath) throws IOException {
-
-
-        List<Path> list = Arrays.asList(SRC);
-        final ObjectName text = new OnVersioned("org.eolang.txt.text", "5f82cc1");
-        String format = String.format(
-                "Tojos should contain versioned objects '%s' after probing, but they didn't",
-                Arrays.asList(text, ProbeMojoTest.STDOUT)
-        );
-
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-        StandardJavaFileManager fileManager = compiler.getStandardFileManager(null, null, null);
-        List<Path> output = new ArrayList<>();
-        output.add(SRC);
-        fileManager.setLocationFromPaths(StandardLocation.CLASS_OUTPUT, output);
-        List<File> list1 = Arrays.asList(
+        StandardJavaFileManager fileManager = compiler.getStandardFileManager(
+                null,
+                null,
+                null
+        );
+        List<File> outputDirList = new ArrayList<>();
+        outputDirList.add(outputPath.toFile());
+        fileManager.setLocation(StandardLocation.CLASS_OUTPUT, outputDirList);
+
+        List<File> filesToCompile = Arrays.asList(
                 SRC.resolve("org").resolve("eolang").resolve("A.java").toFile(),
                 SRC.resolve("org").resolve("eolang").resolve("B.java").toFile(),
                 SRC.resolve("org").resolve("eolang").resolve("C.java").toFile(),
-                SRC.resolve("org").resolve("eolang").resolve("Versionized.java").toFile()
+                SRC.resolve("org").resolve("eolang").resolve("Versionized.java").toFile(),
+                SRC.resolve("org").resolve("eolang").resolve("AnnotationWithVersionized.java").toFile()
         );
-
-        Iterable<? extends JavaFileObject> compilationUnits = fileManager.getJavaFileObjectsFromFiles(list1);
-//        compiler.getTask(null,
-//                fileManager,
-//                null,
-//                List.of("-d " + outputPath.toAbsolutePath()),
-//                null,
-//                compilationUnits
-//        ).call();
+        Iterable<? extends JavaFileObject> compilationUnits = fileManager.getJavaFileObjectsFromFiles(filesToCompile);
+        List<String> javacOptions = new ArrayList<>();
+        javacOptions.add("-d");
+        javacOptions.add(outputPath.resolve(RELATIVE_INPUT_DIR).toAbsolutePath().toString());
+        compiler.getTask(null,
+                fileManager,
+                null,
+                javacOptions,
+                null,
+                compilationUnits
+        ).call();
     }
 
 

@@ -137,6 +137,7 @@ public class ByteCodeModificationMojo extends SafeMojo{
 
         String inputPathAsm = getInputPathAsm(inputPath);
         String outputPathAsm = this.hash + File.separator + inputPathAsm;
+        // TODO: remove variable ClassRemapper
         ClassRemapper classRemapper =
                 new ClassRemapper(classWriter, new SimpleRemapper(inputPathAsm, outputPathAsm));
         classReader.accept(classRemapper, 0);

@@ -23,6 +23,7 @@
  */
 
 package org.eolang;
+
 class C {
     A a;
 }
