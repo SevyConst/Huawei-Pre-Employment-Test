@@ -35,6 +35,7 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
+import java.util.function.Consumer;
 
 public class ByteCodeModificationMojo extends SafeMojo{
 
@@ -43,8 +44,6 @@ public class ByteCodeModificationMojo extends SafeMojo{
 
     public static final String EXTENSION_CLASS = ".class";
     public static final int OPCODE_ASM_VERSION = Opcodes.ASM9;
-
-    public static final String OBJECT_PATH_ASM = "java" + File.separator + "lang" + File.separator + "Object";
 
     @Parameter(
             property = "inputDirectory")
@@ -60,64 +59,21 @@ public class ByteCodeModificationMojo extends SafeMojo{
 
     @Override
     void exec() throws IOException {
-        PathsTable pathsTable = copyVersionizedClasses();
-        copyUsagesVersionized(pathsTable.inputSet, pathsTable.inOutAsmMap);
-        renameUsagesInVersionizedClasses(pathsTable.inOutAsmMap);
-    }
+        final Map<String, String> versionizedAsmMap = new HashMap<>();
+        processClassFiles(
+                this.inputDir,
+                path -> copyIfVersionized(path).ifPresent(a -> versionizedAsmMap.put(a.getKey(), a.getKey()))
+        );
 
-    PathsTable copyVersionizedClasses() throws IOException {
-        PathsTable pathsTable = new PathsTable();
-        Files.walkFileTree(this.inputDir, new SimpleFileVisitor<Path>() {
-            @Override
-            public FileVisitResult visitFile(Path inputPath, BasicFileAttributes attrs) throws IOException {
-                if (hasExtensionClass(inputPath)) {
+        processClassFiles(
+                this.inputDir,
+                path -> copyUsagesVersionized(path, versionizedAsmMap)
+        );
 
-                    Optional<Map.Entry<String, String>> pathIOForAsm = copyIfVersionized(inputPath);
-                    if (pathIOForAsm.isPresent()) {
-                        String inputPathForAsm = pathIOForAsm.get().getKey();
-                        String outputPathForAsm = pathIOForAsm.get().getValue();
-
-                        pathsTable.inputSet.add(inputPath);
-                        pathsTable.inOutAsmMap.put(inputPathForAsm, outputPathForAsm);
-                    }
-                }
-                return FileVisitResult.CONTINUE;
-            }
-        });
-        return pathsTable;
-    }
-
-    void copyUsagesVersionized(Set<Path> inputSet, Map<String, String> inOutAsmMap) throws IOException {
-        Files.walkFileTree(this.inputDir, new SimpleFileVisitor<Path>() {
-            @Override
-            public FileVisitResult visitFile(Path inputPath, BasicFileAttributes attrs) throws IOException {
-                if (hasExtensionClass(inputPath) && !inputSet.contains(inputPath)) {
-                    copyUsageVersionized(inputPath, inOutAsmMap);
-                }
-                return FileVisitResult.CONTINUE;
-            }
-        });
-    }
-
-    void renameUsagesInVersionizedClasses(Map<String, String> inOutAsmMap) throws IOException {
-        Files.walkFileTree(this.outputDir.resolve(this.hash), new SimpleFileVisitor<Path>() {
-            @Override
-            public FileVisitResult visitFile(Path inputPath, BasicFileAttributes attrs) throws IOException {
-                if (hasExtensionClass(inputPath)) {
-                    renameUsagesInVersionizedOneFile(inputPath, inOutAsmMap);
-                }
-                return FileVisitResult.CONTINUE;
-            }
-        });
-    }
-
-    private boolean hasExtensionClass(Path path) {
-        if (Files.isDirectory(path)) {
-            return false;
-        }
-
-        String fileName = path.toString();
-        return EXTENSION_CLASS.equals(fileName.substring(fileName.lastIndexOf(".")));
+        processClassFiles(
+                this.outputDir.resolve(this.hash),
+                path -> renameUsagesInVersionized(path, versionizedAsmMap)
+        );
     }
 
     /**
@@ -125,8 +81,14 @@ public class ByteCodeModificationMojo extends SafeMojo{
      *
      * @return input path and output paths of .class in ASM format (relative path without extension)
      */
-    private Optional<Map.Entry<String, String>> copyIfVersionized(Path inputPath) throws IOException {
-        ClassReader classReader = new ClassReader(Files.readAllBytes(inputPath));
+    private Optional<Map.Entry<String, String>> copyIfVersionized(Path inputPath) {
+        ClassReader classReader;
+        try {
+            classReader = new ClassReader(Files.readAllBytes(inputPath));
+        } catch (IOException e) {
+                throw new Error("Can't read file " + inputPath, e);
+        }
+
         VisitorVersionized visitorVersionized = new VisitorVersionized();
         classReader.accept(visitorVersionized, 0);
 
@@ -143,13 +105,17 @@ public class ByteCodeModificationMojo extends SafeMojo{
         classReader.accept(classRemapper, 0);
 
         Path outputPath = this.outputDir.resolve(outputPathAsm + EXTENSION_CLASS);
-        Files.createDirectories(outputPath.getParent());
-        Files.write(outputPath, classWriter.toByteArray());
+        try {
+            Files.createDirectories(outputPath.getParent());
+            Files.write(outputPath, classWriter.toByteArray());
+        } catch (IOException e) {
+            throw new Error("can't write file " + outputPath, e);
+        }
 
         return Optional.of(new AbstractMap.SimpleEntry<>(inputPathAsm, outputPathAsm));
     }
 
-    private class VisitorVersionized extends ClassVisitor {
+    static class VisitorVersionized extends ClassVisitor {
         public VisitorVersionized() {
             super(OPCODE_ASM_VERSION);
         }
@@ -168,50 +134,69 @@ public class ByteCodeModificationMojo extends SafeMojo{
     /**
      * Obtain relative path without file extension.
      */
-    private String getInputPathAsm(Path inputPath) {
+    String getInputPathAsm(Path inputPath) {
         String relativePath = this.inputDir.relativize(inputPath).toString();
         return relativePath.substring(0, relativePath.length() - EXTENSION_CLASS.length());
     }
 
-    private void copyUsageVersionized(Path inputPath, Map<String, String> inOutAsmMap) throws IOException {
-        ClassReader classReader = new ClassReader(Files.readAllBytes(inputPath));
+    private void copyUsagesVersionized(Path inputPath, Map<String, String> versionizedAsmMap) {
+        ClassReader classReader;
+        try {
+            classReader = new ClassReader(Files.readAllBytes(inputPath));
+        } catch (IOException e) {
+            throw new Error("Can't read file " + inputPath, e);
+        }
+
         ClassWriter classWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS);
-        UsageRemapper usageRemapper = new UsageRemapper(inOutAsmMap);
+        UsageRemapper usageRemapper = new UsageRemapper(versionizedAsmMap);
         ClassRemapper classRemapper = new ClassRemapper(classWriter, usageRemapper);
         classReader.accept(classRemapper, 0);
 
         if (usageRemapper.isChanged) {
-            Path outPath = this.outputDir.resolve(inputDir.relativize(inputPath));
-            Files.createDirectories(outPath.getParent());
-            Files.write(outPath, classWriter.toByteArray());
+            Path outputPath = this.outputDir.resolve(inputDir.relativize(inputPath));
+
+            try {
+                Files.createDirectories(outputPath.getParent());
+                Files.write(outputPath, classWriter.toByteArray());
+            } catch (IOException e) {
+                throw new Error("can't write file " + outputPath, e);
+            }
         }
     }
 
-    // TODO: changed class must not change package
-    private void renameUsagesInVersionizedOneFile(Path outPath, Map<String, String> inOutAsmMap) throws IOException {
-        ClassReader classReader = new ClassReader(Files.readAllBytes(outPath));
+    private void renameUsagesInVersionized(Path outputPath, Map<String, String> versionizedAsmMap) {
+        ClassReader classReader;
+        try{
+            classReader = new ClassReader(Files.readAllBytes(outputPath));
+        } catch (IOException e) {
+            throw new Error("Can't read file " + outputPath, e);
+        }
         ClassWriter classWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS);
 
-        UsageRemapper usageRemapper = new UsageRemapper(inOutAsmMap);
+        UsageRemapper usageRemapper = new UsageRemapper(versionizedAsmMap);
         ClassRemapper classRemapper = new ClassRemapper(classWriter, usageRemapper);
         classReader.accept(classRemapper, 0);
 
         if (usageRemapper.isChanged) {
-            Files.write(outPath, classWriter.toByteArray());
+            try {
+                Files.write(outputPath, classWriter.toByteArray());
+            } catch (IOException e) {
+                throw new Error("can't write file " + outputPath, e);
+            }
         }
     }
 
-    private class UsageRemapper extends Remapper{
-        private final Map<String, String> inOutAsmMap;
+    static class UsageRemapper extends Remapper{
+        private final Map<String, String> versionizedAsmMap;
         private boolean isChanged;
 
-        public UsageRemapper(final Map<String, String> inOutAsmMap) {
-            this.inOutAsmMap = inOutAsmMap;
+        public UsageRemapper(final Map<String, String> versionizedAsmMap) {
+            this.versionizedAsmMap = versionizedAsmMap;
         }
 
         @Override
         public String map(String typeName) {
-            String outputPathAsm = inOutAsmMap.get(typeName);
+            String outputPathAsm = versionizedAsmMap.get(typeName);
             if (null != outputPathAsm) {
                 isChanged = true;
                 return outputPathAsm;
@@ -220,8 +205,23 @@ public class ByteCodeModificationMojo extends SafeMojo{
         }
     }
 
-    class PathsTable {
-        final Map<String, String> inOutAsmMap = new HashMap<>();
-        final Set<Path> inputSet = new HashSet<>();
+    public static void processClassFiles(Path dir, Consumer<Path> consumer) throws IOException {
+        Files.walkFileTree(dir, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult visitFile(Path path, BasicFileAttributes attrs) {
+                if (isClassFile(path)) {
+                    consumer.accept(path);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    public static boolean isClassFile(Path path) {
+        if (Files.isDirectory(path)) {
+            return false;
+        }
+        String fileName = path.toString();
+        return EXTENSION_CLASS.equals(fileName.substring(fileName.lastIndexOf(".")));
     }
 }

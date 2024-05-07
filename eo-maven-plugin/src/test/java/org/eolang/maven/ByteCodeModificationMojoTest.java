@@ -24,42 +24,56 @@
 
 package org.eolang.maven;
 
-import org.eolang.maven.name.ObjectName;
-import org.eolang.maven.name.OnVersioned;
 import org.eolang.maven.util.HmBase;
+import org.hamcrest.MatcherAssert;
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.objectweb.asm.*;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.tree.ClassNode;
 
 import javax.tools.*;
 import java.io.*;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
+import java.util.function.Consumer;
 
 
 public class ByteCodeModificationMojoTest {
 
-    private static final String CLASS_A_PATH_ASM = "org" + File.separator + "eolang" + File.separator + "A";
-    private static final String CLASS_A_DESCRIPTOR = "L" + CLASS_A_PATH_ASM + ";";
-    private static final String CLASS_B_PATH_ASM = "org" + File.separator + "eolang" + File.separator + "B";
+    private static final String OBJECT = "java/lang/Object";
+    private static final String EXTENSION_JAVA = ".java";
+
+    private static final String ORG_EOLANG_SRC = "org.eolang";
+//    private static final String A_SRC = ORG_EOLANG_SRC + "A" +
+
+
+    private static final String ORG_EOLANG_ASM_PATH = "org/eolang/";
+    private static final String A_ASM_PATH = ORG_EOLANG_ASM_PATH + "A";
+    private static final String CLASS_B_PATH_ASM = ORG_EOLANG_ASM_PATH + "B";
     private static final String CLASS_B_DESCRIPTOR = "L" + CLASS_B_PATH_ASM + ";";
     private static final String CLASS_C_PATH_ASM = "org" + File.separator + "eolang" + File.separator + "C";
     private static final String CLASS_C_DESCRIPTOR = "L" + CLASS_C_PATH_ASM + ";";
 
-    public static Path SRC = Paths.get("src/test/resources/org/eolang/maven/bytecode-modification/");
 
+    private static final String INTERFACE_USAGE_ASM_PATH = ORG_EOLANG_ASM_PATH + "interfaces/InterfaceUsage";
 
-    private static final String RELATIVE_INPUT_DIR = "target" + File.separator + "classes";
-    private static final String RELATIVE_OUTPUT_DIR = "target" + File.separator + "modified-classes";
+    public static Path SRC = Paths.get("src/test/resources/org/eolang/maven/bytecode-modification/java-files");
+
+    private static final Path RELATIVE_INPUT_DIR = Paths.get("target/classes");
+    private static final Path RELATIVE_OUTPUT_DIR = Paths.get("target/modified-classes");
     private static final String HASH = "qwerty";
+
+    private static final String SUPER_CLASS_DEFAULT_CHECK = "SUPER_CLASS_DEFAULT_CHECK";
+    private static final String INTERFACES_DEFAULT_CHECK = "INTERFACES_DEFAULT_CHECK";
 
     @Test
     public void test(@TempDir final Path temp) throws Exception {
 
         Path inputDirPath = temp.resolve(RELATIVE_INPUT_DIR);
         Path outputDirPath = temp.resolve(RELATIVE_OUTPUT_DIR);
+
         compile(temp);
 
         new FakeMaven(temp)
@@ -68,8 +82,11 @@ public class ByteCodeModificationMojoTest {
                 .with("hash", HASH)
                 .execute(ByteCodeModificationMojo.class);
 
-        Path outPathClassA = outputDirPath.resolve(HASH).resolve(CLASS_A_PATH_ASM);
-//        ClassReader classReader = new ClassReader(Files.readAllBytes(outPathClassA));
+
+
+
+
+        // TODO: check number of files by deps in resource directory
     }
 
     private void saveClassFile(
@@ -92,22 +109,17 @@ public class ByteCodeModificationMojoTest {
         fileManager.setLocation(StandardLocation.CLASS_OUTPUT, outputDirList);
 
         List<File> filesToCompile = new ArrayList<>();
-        filesToCompile.add(SRC.resolve("org").resolve("eolang").resolve("interfaces").resolve("InterfaceVersionized.java").toFile());
-        filesToCompile.add(SRC.resolve("org").resolve("eolang").resolve("A.java").toFile());
-        filesToCompile.add(SRC.resolve("org").resolve("eolang").resolve("B.java").toFile());
-        filesToCompile.add(SRC.resolve("org").resolve("eolang").resolve("C.java").toFile());
-        filesToCompile.add(SRC.resolve("org").resolve("eolang").resolve("Versionized.java").toFile());
-        filesToCompile.add(SRC.resolve("org").resolve("eolang").resolve("annotations").resolve("AnnotationVersionized.java").toFile());
-        filesToCompile.add(SRC.resolve("org").resolve("eolang").resolve("other").resolve("LocalVariable.java").toFile());
-        filesToCompile.add(SRC.resolve("org").resolve("eolang").resolve("other").resolve("Generic.java").toFile());
-        filesToCompile.add(SRC.resolve("org").resolve("eolang").resolve("other").resolve("MethodSignature.java").toFile());
-        filesToCompile.add(SRC.resolve("org").resolve("eolang").resolve("other").resolve("VersionizedClass.java").toFile());
+        processJavaFiles(
+                SRC,
+                path -> filesToCompile.add(path.toFile())
+        );
 
         Iterable<? extends JavaFileObject> compilationUnits = fileManager.getJavaFileObjectsFromFiles(filesToCompile);
         List<String> javacOptions = new ArrayList<>();
         javacOptions.add("-d");
         javacOptions.add(outputPath.resolve(RELATIVE_INPUT_DIR).toAbsolutePath().toString());
-        compiler.getTask(null,
+        compiler.getTask(
+                null,
                 fileManager,
                 null,
                 javacOptions,
@@ -116,33 +128,100 @@ public class ByteCodeModificationMojoTest {
         ).call();
     }
 
+    private void aCheck(HashSet<Path> outputFiles, Path outputDirPath) throws IOException {
+        Set<String> defaultChecks = getAllDefaultChecks();
+        doDefaultChecks(A_ASM_PATH, outputFiles, outputDirPath, defaultChecks, true);
+    }
 
-//    private class ClassFiller extends ClassVisitor {
-//        public ClassFiller() {
-//            super(ByteCodeModificationMojo.OPCODE_ASM_VERSION);
-//        }
-//
-//        @Override
-//        public void visit(int version,
-//                          int access,
-//                          String name,
-//                          String signature,
-//                          String superName,
-//                          String[] interfaces
-//        ) {
-//
-//            AnnotationVisitor av = visitAnnotation(
-//                    ByteCodeModificationMojo.PATH_TO_VERSIONIZED,
-//                    true
-//            );
-//            Object value = "the-value-to-set";
-//
-//            // This sets a parameter on the annotation
-//            // it could be called more than once for multiple parameters
-//            if (av != null) {
-//                av.visit("value", value);
-//            }
-//            super.visit(version, access, name, signature, superName, interfaces);
-//        }
-//    }
+    private void interfaceUsageCheck(HashSet<Path> outputFiles, Path outputDirPath) throws IOException {
+        Set<String> defaultChecks = getAllDefaultChecks();
+        defaultChecks.remove(INTERFACES_DEFAULT_CHECK);
+        doDefaultChecks(INTERFACE_USAGE_ASM_PATH, outputFiles, outputDirPath, defaultChecks, true);
+    }
+
+    private void doDefaultChecks(String inputAsmPath,
+                                 HashSet<Path> outputFiles,
+                                 Path outputDirPath,
+                                 Set<String> checks,
+                                 boolean hasVersionized) throws IOException {
+
+        String asmPath = hasVersionized ? HASH + File.separator + inputAsmPath : inputAsmPath;
+        Path path = outputDirPath.resolve(asmPath + ByteCodeModificationMojo.EXTENSION_CLASS);
+        MatcherAssert.assertThat(
+                "Can't find " + path,
+                outputFiles.contains(path),
+                Matchers.equalTo(true)
+        );
+
+        ClassNode classNode = getClassNode(path);
+        MatcherAssert.assertThat(
+                "The name in ASM format",
+                classNode.name,
+                Matchers.equalTo(asmPath)
+        );
+
+        if (checks.contains(SUPER_CLASS_DEFAULT_CHECK)) {
+            MatcherAssert.assertThat(
+                    A_ASM_PATH + " has wrong superclass",
+                    classNode.superName,
+                    Matchers.equalTo(OBJECT)
+            );
+        }
+
+        if (checks.contains(INTERFACES_DEFAULT_CHECK)) {
+            MatcherAssert.assertThat(
+                    A_ASM_PATH + " has irrelevant interfaces: " + classNode.interfaces,
+                    classNode.interfaces.size(),
+                    Matchers.equalTo(0)
+            );
+        }
+
+        String sourceFile = A_ASM_PATH.substring(A_ASM_PATH.lastIndexOf(File.separator) + 1) + EXTENSION_JAVA;
+        MatcherAssert.assertThat(
+                A_ASM_PATH + ".class has wrong source file ",
+                classNode.sourceFile,
+                Matchers.equalTo(sourceFile)
+        );
+        MatcherAssert.assertThat(
+                A_ASM_PATH + " has wrong module",
+                classNode.module,
+                Matchers.equalTo(null)
+        );
+    }
+
+    private Set<String> getAllDefaultChecks() {
+        Set<String> allDefaultsCheck = new HashSet<>();
+
+        allDefaultsCheck.add(SUPER_CLASS_DEFAULT_CHECK);
+        allDefaultsCheck.add(INTERFACES_DEFAULT_CHECK);
+
+        return allDefaultsCheck;
+    }
+
+    private ClassNode getClassNode(Path path) throws IOException {
+        ClassReader classReader = new ClassReader(Files.readAllBytes(path));
+        ClassNode classNode = new ClassNode();
+        classReader.accept(classNode, 0);
+        return classNode;
+    }
+
+    private void processJavaFiles(Path dir, Consumer<Path> consumer) throws IOException {
+        Files.walkFileTree(dir, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult visitFile(Path path, BasicFileAttributes attrs) {
+                if (isClassJava(path)) {
+                    consumer.accept(path);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    private boolean isClassJava(Path path) {
+        if (Files.isDirectory(path)) {
+            return false;
+        }
+        String fileName = path.toString();
+        return EXTENSION_JAVA.equals(fileName.substring(fileName.lastIndexOf(".")));
+    }
 }
