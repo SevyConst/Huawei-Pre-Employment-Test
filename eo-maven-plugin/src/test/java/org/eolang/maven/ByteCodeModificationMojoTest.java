@@ -24,7 +24,9 @@
 
 package org.eolang.maven;
 
+import org.cactoos.set.SetOf;
 import org.eolang.maven.util.HmBase;
+import org.eolang.maven.util.Walk;
 import org.hamcrest.MatcherAssert;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
@@ -38,6 +40,7 @@ import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 
 public class ByteCodeModificationMojoTest {
@@ -48,6 +51,7 @@ public class ByteCodeModificationMojoTest {
     private static final String ORG_EOLANG_SRC = "org.eolang";
 //    private static final String A_SRC = ORG_EOLANG_SRC + "A" +
 
+    private final Set<String> includeBinaries = new SetOf<>("**/*.java");
 
     private static final String ORG_EOLANG_ASM_PATH = "org/eolang/";
     private static final String A_ASM_PATH = ORG_EOLANG_ASM_PATH + "A";
@@ -107,13 +111,9 @@ public class ByteCodeModificationMojoTest {
         List<File> outputDirList = new ArrayList<>();
         outputDirList.add(outputPath.toFile());
         fileManager.setLocation(StandardLocation.CLASS_OUTPUT, outputDirList);
-
-        List<File> filesToCompile = new ArrayList<>();
-        processJavaFiles(
-                SRC,
-                path -> filesToCompile.add(path.toFile())
-        );
-
+        Collection<Path> pathsToCompile = new Walk(SRC)
+                .includes(includeBinaries);
+        List<File> filesToCompile = pathsToCompile.stream().map(Path::toFile).collect(Collectors.toList());
         Iterable<? extends JavaFileObject> compilationUnits = fileManager.getJavaFileObjectsFromFiles(filesToCompile);
         List<String> javacOptions = new ArrayList<>();
         javacOptions.add("-d");
@@ -203,25 +203,5 @@ public class ByteCodeModificationMojoTest {
         ClassNode classNode = new ClassNode();
         classReader.accept(classNode, 0);
         return classNode;
-    }
-
-    private void processJavaFiles(Path dir, Consumer<Path> consumer) throws IOException {
-        Files.walkFileTree(dir, new SimpleFileVisitor<Path>() {
-            @Override
-            public FileVisitResult visitFile(Path path, BasicFileAttributes attrs) {
-                if (isClassJava(path)) {
-                    consumer.accept(path);
-                }
-                return FileVisitResult.CONTINUE;
-            }
-        });
-    }
-
-    private boolean isClassJava(Path path) {
-        if (Files.isDirectory(path)) {
-            return false;
-        }
-        String fileName = path.toString();
-        return EXTENSION_JAVA.equals(fileName.substring(fileName.lastIndexOf(".")));
     }
 }
