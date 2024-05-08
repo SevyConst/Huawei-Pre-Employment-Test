@@ -25,7 +25,6 @@
 package org.eolang.maven;
 
 import org.cactoos.set.SetOf;
-import org.eolang.maven.util.HmBase;
 import org.eolang.maven.util.Walk;
 import org.hamcrest.MatcherAssert;
 import org.hamcrest.Matchers;
@@ -37,33 +36,20 @@ import org.objectweb.asm.tree.ClassNode;
 import javax.tools.*;
 import java.io.*;
 import java.nio.file.*;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
-import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 
 public class ByteCodeModificationMojoTest {
 
     private static final String OBJECT = "java/lang/Object";
-    private static final String EXTENSION_JAVA = ".java";
 
-    private static final String ORG_EOLANG_SRC = "org.eolang";
-//    private static final String A_SRC = ORG_EOLANG_SRC + "A" +
-
-    private final Set<String> includeBinaries = new SetOf<>("**/*.java");
+    private static final Set<String> GLOB_JAVA_FILES = new SetOf<>("**/*.java");
 
     private static final String ORG_EOLANG_ASM_PATH = "org/eolang/";
     private static final String A_ASM_PATH = ORG_EOLANG_ASM_PATH + "A";
-    private static final String CLASS_B_PATH_ASM = ORG_EOLANG_ASM_PATH + "B";
-    private static final String CLASS_B_DESCRIPTOR = "L" + CLASS_B_PATH_ASM + ";";
-    private static final String CLASS_C_PATH_ASM = "org" + File.separator + "eolang" + File.separator + "C";
-    private static final String CLASS_C_DESCRIPTOR = "L" + CLASS_C_PATH_ASM + ";";
 
-
-    private static final String INTERFACE_USAGE_ASM_PATH = ORG_EOLANG_ASM_PATH + "interfaces/InterfaceUsage";
-
-    public static Path SRC = Paths.get("src/test/resources/org/eolang/maven/bytecode-modification/java-files");
+    public static final Path SRC = Paths.get("src/test/resources/org/eolang/maven/bytecode-modification/java-files");
 
     private static final Path RELATIVE_INPUT_DIR = Paths.get("target/classes");
     private static final Path RELATIVE_OUTPUT_DIR = Paths.get("target/modified-classes");
@@ -73,12 +59,17 @@ public class ByteCodeModificationMojoTest {
     private static final String INTERFACES_DEFAULT_CHECK = "INTERFACES_DEFAULT_CHECK";
 
     @Test
-    public void test(@TempDir final Path temp) throws Exception {
+    public void integrationTest(@TempDir final Path temp) throws Exception {
 
         Path inputDirPath = temp.resolve(RELATIVE_INPUT_DIR);
         Path outputDirPath = temp.resolve(RELATIVE_OUTPUT_DIR);
 
-        compile(temp);
+        compile(inputDirPath);
+        Map<String, Boolean> foundMap = new Walk(inputDirPath)
+                .includes(ByteCodeModificationMojo.GLOB_CLASS_FILES)
+                .stream()
+                .map(path -> ByteCodeModificationMojo.pathToAsmName(path, inputDirPath))
+                .collect(Collectors.toMap(s -> s, s -> false));
 
         new FakeMaven(temp)
                 .with("inputDir", inputDirPath)
@@ -86,38 +77,61 @@ public class ByteCodeModificationMojoTest {
                 .with("hash", HASH)
                 .execute(ByteCodeModificationMojo.class);
 
+        Collection<Path> outputPaths = new Walk(outputDirPath)
+                .includes(ByteCodeModificationMojo.GLOB_CLASS_FILES);
 
 
-
+        for (Map.Entry<String, Boolean> foundClass : foundMap.entrySet()) {
+            Set<String> defaultChecks = getAllDefaultChecks();
+            String inputAsmName = foundClass.getKey();
+            switch (inputAsmName.substring(inputAsmName.lastIndexOf("/") + 1)) {
+                case "A":
+                    doDefaultChecks(
+                            foundClass,
+                            outputPaths,
+                            outputDirPath,
+                            defaultChecks,
+                            true
+                    );
+                    break;
+                case "InterfaceUsage":
+                    defaultChecks.remove(INTERFACES_DEFAULT_CHECK);
+                    ClassNode classNode = doDefaultChecks(
+                            foundClass,
+                            outputPaths,
+                            outputDirPath,
+                            defaultChecks,
+                            false);
+                    MatcherAssert.assertThat(
+                            "output class for "
+                                    + inputAsmName
+                                    + " has wrong number of interfaces"
+                                    + classNode.interfaces,
+                            classNode.interfaces.size(),
+                            Matchers.equalTo(1)
+                    );
+                    break;
+                default:
+            }
+        }
 
         // TODO: check number of files by deps in resource directory
     }
 
-    private void saveClassFile(
-            final Path temp,
-            final byte[] content,
-            final String className) throws IOException {
-        new HmBase(temp.resolve(RELATIVE_INPUT_DIR))
-                .save(content, Paths.get( className + ByteCodeModificationMojo.EXTENSION_CLASS));
-    }
-
-    private void compile(Path outputPath) throws IOException {
+    private void compile(Path dirWithInputClassFiles) {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         StandardJavaFileManager fileManager = compiler.getStandardFileManager(
                 null,
                 null,
                 null
         );
-        List<File> outputDirList = new ArrayList<>();
-        outputDirList.add(outputPath.toFile());
-        fileManager.setLocation(StandardLocation.CLASS_OUTPUT, outputDirList);
         Collection<Path> pathsToCompile = new Walk(SRC)
-                .includes(includeBinaries);
+                .includes(GLOB_JAVA_FILES);
         List<File> filesToCompile = pathsToCompile.stream().map(Path::toFile).collect(Collectors.toList());
         Iterable<? extends JavaFileObject> compilationUnits = fileManager.getJavaFileObjectsFromFiles(filesToCompile);
         List<String> javacOptions = new ArrayList<>();
         javacOptions.add("-d");
-        javacOptions.add(outputPath.resolve(RELATIVE_INPUT_DIR).toAbsolutePath().toString());
+        javacOptions.add(dirWithInputClassFiles.toAbsolutePath().toString());
         compiler.getTask(
                 null,
                 fileManager,
@@ -128,41 +142,35 @@ public class ByteCodeModificationMojoTest {
         ).call();
     }
 
-    private void aCheck(HashSet<Path> outputFiles, Path outputDirPath) throws IOException {
-        Set<String> defaultChecks = getAllDefaultChecks();
-        doDefaultChecks(A_ASM_PATH, outputFiles, outputDirPath, defaultChecks, true);
-    }
-
-    private void interfaceUsageCheck(HashSet<Path> outputFiles, Path outputDirPath) throws IOException {
-        Set<String> defaultChecks = getAllDefaultChecks();
-        defaultChecks.remove(INTERFACES_DEFAULT_CHECK);
-        doDefaultChecks(INTERFACE_USAGE_ASM_PATH, outputFiles, outputDirPath, defaultChecks, true);
-    }
-
-    private void doDefaultChecks(String inputAsmPath,
-                                 HashSet<Path> outputFiles,
+    private ClassNode doDefaultChecks(Map.Entry<String, Boolean> foundClass,
+                                 Collection<Path> outputPaths,
                                  Path outputDirPath,
                                  Set<String> checks,
                                  boolean hasVersionized) throws IOException {
+        String inputAsmName = foundClass.getKey();
+        String correctOutputAsmName = hasVersionized ? HASH + File.separator + inputAsmName : inputAsmName;
 
-        String asmPath = hasVersionized ? HASH + File.separator + inputAsmPath : inputAsmPath;
-        Path path = outputDirPath.resolve(asmPath + ByteCodeModificationMojo.EXTENSION_CLASS);
+        Set<String> outputAsmNames = outputPaths
+                .stream()
+                .map(path -> ByteCodeModificationMojo.pathToAsmName(path, outputDirPath))
+                .collect(Collectors.toSet());
         MatcherAssert.assertThat(
-                "Can't find " + path,
-                outputFiles.contains(path),
+                "Can't find output .class file with name in ASM format: " + correctOutputAsmName,
+                outputAsmNames.contains(correctOutputAsmName),
                 Matchers.equalTo(true)
         );
+        foundClass.setValue(true);
 
-        ClassNode classNode = getClassNode(path);
+        ClassNode classNode = getClassNode(correctOutputAsmName, outputDirPath);
         MatcherAssert.assertThat(
                 "The name in ASM format",
                 classNode.name,
-                Matchers.equalTo(asmPath)
+                Matchers.equalTo(correctOutputAsmName)
         );
 
         if (checks.contains(SUPER_CLASS_DEFAULT_CHECK)) {
             MatcherAssert.assertThat(
-                    A_ASM_PATH + " has wrong superclass",
+                    correctOutputAsmName + " has wrong superclass",
                     classNode.superName,
                     Matchers.equalTo(OBJECT)
             );
@@ -170,23 +178,25 @@ public class ByteCodeModificationMojoTest {
 
         if (checks.contains(INTERFACES_DEFAULT_CHECK)) {
             MatcherAssert.assertThat(
-                    A_ASM_PATH + " has irrelevant interfaces: " + classNode.interfaces,
+                    correctOutputAsmName + " has irrelevant interfaces: " + classNode.interfaces,
                     classNode.interfaces.size(),
                     Matchers.equalTo(0)
             );
         }
+//
+//        String sourceFile = A_ASM_PATH.substring(A_ASM_PATH.lastIndexOf(File.separator) + 1) + EXTENSION_JAVA;
+//        MatcherAssert.assertThat(
+//                A_ASM_PATH + ".class has wrong source file ",
+//                classNode.sourceFile,
+//                Matchers.equalTo(sourceFile)
+//        );
+//        MatcherAssert.assertThat(
+//                A_ASM_PATH + " has wrong module",
+//                classNode.module,
+//                Matchers.equalTo(null)
+//        );
 
-        String sourceFile = A_ASM_PATH.substring(A_ASM_PATH.lastIndexOf(File.separator) + 1) + EXTENSION_JAVA;
-        MatcherAssert.assertThat(
-                A_ASM_PATH + ".class has wrong source file ",
-                classNode.sourceFile,
-                Matchers.equalTo(sourceFile)
-        );
-        MatcherAssert.assertThat(
-                A_ASM_PATH + " has wrong module",
-                classNode.module,
-                Matchers.equalTo(null)
-        );
+        return classNode;
     }
 
     private Set<String> getAllDefaultChecks() {
@@ -198,10 +208,15 @@ public class ByteCodeModificationMojoTest {
         return allDefaultsCheck;
     }
 
-    private ClassNode getClassNode(Path path) throws IOException {
+    private ClassNode getClassNode(String asmName, Path dir) throws IOException {
+        Path path = asmNameToPath(asmName, dir);
         ClassReader classReader = new ClassReader(Files.readAllBytes(path));
         ClassNode classNode = new ClassNode();
         classReader.accept(classNode, 0);
         return classNode;
     }
-}
+
+    private static Path asmNameToPath(String asmName, Path dir) {
+        return dir.resolve(asmName + ByteCodeModificationMojo.EXTENSION_CLASS);
+    }
+} 

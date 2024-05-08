@@ -43,7 +43,7 @@ public class ByteCodeModificationMojo extends SafeMojo{
     public static final String PATH_TO_VERSIONIZED =
             "Lorg" + File.separator + "eolang" + File.separator + "Versionized;";
 
-    private final Set<String> includeClassFiles = new SetOf<>("**/*.class");
+    public static final Set<String> GLOB_CLASS_FILES = new SetOf<>("**/*.class");
 
     public static final String EXTENSION_CLASS = ".class";
     public static final int OPCODE_ASM_VERSION = Opcodes.ASM9;
@@ -63,7 +63,7 @@ public class ByteCodeModificationMojo extends SafeMojo{
     // TODO write that algorithm consist of three steps - add links to three method
     @Override
     void exec() throws IOException {
-        Walk inputWalk = new Walk(inputDir).includes(includeClassFiles);
+        Walk inputWalk = new Walk(inputDir).includes(GLOB_CLASS_FILES);
         final Map<String, String> versionizedAsmMap = inputWalk
                 .stream()
                 .map(this::copyIfVersionized)
@@ -74,7 +74,7 @@ public class ByteCodeModificationMojo extends SafeMojo{
         inputWalk.forEach(path -> copyUsagesVersionized(path, versionizedAsmMap));
 
         new Walk(outputDir)
-                .includes(includeClassFiles)
+                .includes(GLOB_CLASS_FILES)
                 .forEach(path -> renameUsagesInVersionized(path, versionizedAsmMap));
     }
 
@@ -99,14 +99,14 @@ public class ByteCodeModificationMojo extends SafeMojo{
         }
         ClassWriter classWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS);
 
-        String inputPathAsm = getInputPathAsm(inputPath);
-        String outputPathAsm = this.hash + File.separator + inputPathAsm;
+        String inputAsm = pathToAsmName(inputPath, this.inputDir);
+        String outputAsm = this.hash + File.separator + inputAsm;
         // TODO: remove variable ClassRemapper
         ClassRemapper classRemapper =
-                new ClassRemapper(classWriter, new SimpleRemapper(inputPathAsm, outputPathAsm));
+                new ClassRemapper(classWriter, new SimpleRemapper(inputAsm, outputAsm));
         classReader.accept(classRemapper, 0);
 
-        Path outputPath = this.outputDir.resolve(outputPathAsm + EXTENSION_CLASS);
+        Path outputPath = this.outputDir.resolve(outputAsm + EXTENSION_CLASS);
         try {
             Files.createDirectories(outputPath.getParent());
             Files.write(outputPath, classWriter.toByteArray());
@@ -114,7 +114,7 @@ public class ByteCodeModificationMojo extends SafeMojo{
             throw new Error("can't write file " + outputPath, e);
         }
 
-        return Optional.of(new AbstractMap.SimpleEntry<>(inputPathAsm, outputPathAsm));
+        return Optional.of(new AbstractMap.SimpleEntry<>(inputAsm, outputAsm));
     }
 
     static class VisitorVersionized extends ClassVisitor {
@@ -136,8 +136,8 @@ public class ByteCodeModificationMojo extends SafeMojo{
     /**
      * Obtain relative path without file extension.
      */
-    String getInputPathAsm(Path inputPath) {
-        String relativePath = this.inputDir.relativize(inputPath).toString();
+    public static String pathToAsmName(Path inputPath, Path inputDir) {
+        String relativePath = inputDir.relativize(inputPath).toString();
         return relativePath.substring(0, relativePath.length() - EXTENSION_CLASS.length());
     }
 
@@ -149,6 +149,10 @@ public class ByteCodeModificationMojo extends SafeMojo{
             throw new Error("Can't read file " + inputPath, e);
         }
 
+        String inputAsmName = pathToAsmName(inputPath, inputDir);
+        if (null != versionizedAsmMap.get(inputAsmName)) {
+            return;
+        }
         ClassWriter classWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS);
         UsageRemapper usageRemapper = new UsageRemapper(versionizedAsmMap);
         ClassRemapper classRemapper = new ClassRemapper(classWriter, usageRemapper);
