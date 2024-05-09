@@ -1,7 +1,5 @@
 package org.eolang.other.pakage;
 
-import org.eolang.other.SimpleClass;
-
-public class OtherPackage {
-    SimpleClass simpleClass;
+public class SimpleClass {
+    org.eolang.other.SimpleClass simpleClass;
 }

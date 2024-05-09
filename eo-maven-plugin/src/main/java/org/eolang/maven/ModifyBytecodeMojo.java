@@ -38,7 +38,7 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class ByteCodeModificationMojo extends SafeMojo{
+public class ModifyBytecodeMojo extends SafeMojo{
 
     public static final String PATH_TO_VERSIONIZED =
             "Lorg" + File.separator + "eolang" + File.separator + "Versionized;";

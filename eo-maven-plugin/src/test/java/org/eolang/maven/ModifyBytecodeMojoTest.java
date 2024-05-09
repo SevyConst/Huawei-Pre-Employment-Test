@@ -40,7 +40,7 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class ByteCodeModificationMojoTest {
+public class ModifyBytecodeMojoTest {
 
     private static final Set<String> GLOB_JAVA_FILES = new SetOf<>("**/*.java");
 
@@ -67,26 +67,28 @@ public class ByteCodeModificationMojoTest {
 
     private static final char ASM_SLASH = '/';
     private static final String ASM_OBJECT = "java/lang/Object";
-    private static final String ASM_VERSIONIZED_ANNOTATION = "Lorg/eolang/Versionized;";
-    private static final String ASM_A_FIELD = "Lqwerty/org/eolang/A;";
-    private static final String ASM_B_FIELD = "Lqwerty/org/eolang/B;";
-    private static final String ASM_C_FIELD = "Lorg/eolang/C;";
+    private static final String ASM_DEFAULT_PATH = "org/eolang/";
+    private static final String ASM_A = HASH + ASM_DEFAULT_PATH + "A";
+    private static final String ASM_DESC_A = asmNameToAsmDesc(ASM_A);
+    private static final String ASM_B = HASH + ASM_DEFAULT_PATH + "B";
+    private static final String ASM_DESC_B = asmNameToAsmDesc(ASM_B);
+    private static final String ASM_C = ASM_DEFAULT_PATH + "C";
+    private static final String ASM_DESC_C = asmNameToAsmDesc(ASM_C);
+    private static final String ASM_VERSIONIZED = ASM_DEFAULT_PATH + "Versionized";
+    private static final String ASM_DESC_VERSIONIZED = asmNameToAsmDesc(ASM_VERSIONIZED);
 
     /**
      *
-     * 1) Read special .java files from the resources path
-     * 2) Compile it to .class files and save binaries in the input directory
-     * 3) Create {@link Map}:
-     *      key - path to the input .class file
-     *      (paths are saved the in ASM format - relative path without file extension),
-     *      value - is corresponding .class file matched with file in the output directory
-     *      (at this stage all values are false)
-     * 4) Execute the mojo
-     * 5) Find all created .class files in the output directory. Create one more {@link Map}:
+     * 1. Read special .java files from the resources path.
+     * 2. Compile it to .class files and save binaries in the input directory.
+     * 3. Create {@link Set} with all these binaries. Key of the Set is {}String - name
+     * 4. Execute the mojo
+     * 5. Find all created .class files in the output directory. Create one more {@link Map}:
      *      key - path to output .class file {@link Path}
-     *      value - is this file matched to the input .class files
-     *      (at this stage all values are false)
-     * 6) Find corresponding .class files in the output directory. Fill values in these two Maps
+     *      value - is this file matched to the input .class files? (at this stage all values are false)
+     * 6. Find corresponding .class files in the output directory. Check content of binaries via ASM library. Fill
+     *      values in these two maps. If input class doesn't have Versionized annotation, and it doesn't contain the
+     *      usage of any class with Versionized Annotation than it must have no match in output
      */
     @Test
     public void fullIntegrationTest(@TempDir final Path temp) throws Exception {
@@ -94,67 +96,50 @@ public class ByteCodeModificationMojoTest {
         Path outputDirPath = temp.resolve(RELATIVE_OUTPUT_DIR);
 
         compile(inputDirPath);
-        Map<String, Boolean> inputClasses = new Walk(inputDirPath)
-                .includes(ByteCodeModificationMojo.GLOB_CLASS_FILES)
+        Set<String> inputAsmNames = new Walk(inputDirPath)
+                .includes(ModifyBytecodeMojo.GLOB_CLASS_FILES)
                 .stream()
-                .collect(
-                        Collectors.toMap(
-                                path -> ByteCodeModificationMojo.pathToAsmName(path, inputDirPath),
-                                path -> false
-                        )
-                );
+                .map(path -> ModifyBytecodeMojo.pathToAsmName(path, inputDirPath))
+                .collect(Collectors.toSet());
 
         new FakeMaven(temp)
                 .with("inputDir", inputDirPath)
                 .with("outputDir", outputDirPath)
                 .with("hash", HASH)
-                .execute(ByteCodeModificationMojo.class);
+                .execute(ModifyBytecodeMojo.class);
 
-        Map<Path, Boolean> outputPaths = new Walk(outputDirPath)
-                .includes(ByteCodeModificationMojo.GLOB_CLASS_FILES)
-                .stream()
-                .collect(Collectors.toMap(path -> path, path -> false));
-        for (Map.Entry<String, Boolean> inputClass : inputClasses.entrySet()) {
-            String inputAsmName = inputClass.getKey();
-            switch (inputAsmName.substring(inputAsmName.lastIndexOf(ASM_SLASH) + 1)) {
-                case "A":
-                    checkClassA(inputClass, outputPaths, outputDirPath);
+        Collection<Path> outputPaths = new Walk(outputDirPath).includes(ModifyBytecodeMojo.GLOB_CLASS_FILES);
+        for (String inputAsmName : inputAsmNames) {
+            switch (inputAsmName) {
+                case ASM_A:
+                    checkClassA(inputAsmName, outputPaths, outputDirPath);
                     break;
-                case "B":
-                    checkClassB(inputClass, outputPaths, outputDirPath);
+                case ASM_B:
+                    checkClassB(inputAsmName, outputPaths, outputDirPath);
                     break;
-                case "C":
-                    checkClassC(inputClass, outputPaths, outputDirPath);
+                case ASM_C:
+                    checkClassC(inputAsmName, outputPaths, outputDirPath);
                     break;
+                case ASM_VERSIONIZED:
                 case "Interface":
-                    checkClassInterfaceUsage(inputClass, outputPaths, outputDirPath);
+                    checkClassInterfaceUsage(inputAsmName, outputPaths, outputDirPath);
                     break;
                 default:
-
+                    MatcherAssert.
             }
+
+            inputAsmNames.remove(inputAsmName);
         }
 
-        Set<String> unmatchedInputClasses = inputClasses
-                .entrySet()
-                .stream()
-                .filter(entry -> !entry.getValue())
-                .map(Map.Entry::getKey)
-                .collect(Collectors.toSet());
         MatcherAssert.assertThat(
-                "Can't find output for input classes: " + unmatchedInputClasses,
-                unmatchedInputClasses.size(),
+                "Can't check input classes: " + inputAsmNames,
+                inputAsmNames.size(),
                 Matchers.equalTo(0)
         );
 
-        Set<Path> irrelevantOutputClasses = outputPaths
-                .entrySet()
-                .stream()
-                .filter(entry -> !entry.getValue())
-                .map(Map.Entry::getKey)
-                .collect(Collectors.toSet());
         MatcherAssert.assertThat(
-                "Irrelevant output classes: " + irrelevantOutputClasses,
-                irrelevantOutputClasses.size(),
+                "Irrelevant output classes: " + outputPaths,
+                outputPaths.size(),
                 Matchers.equalTo(0)
         );
     }
@@ -218,31 +203,25 @@ public class ByteCodeModificationMojoTest {
      * @return ClassNode for creating custom checks
      */
     private ClassNode doDefaultClassChecks(
-            Map.Entry<String, Boolean> inputClass,
-            Map<Path, Boolean> outputPaths,
+            String inputAsmName,
+            Collection<Path> outputPaths,
             Path outputDirPath,
             Set<String> defaultClassChecks,
             boolean isVersionized
     ) throws IOException {
 
-        String inputAsmName = inputClass.getKey();
         String correctOutputAsmName = isVersionized ? HASH + File.separator + inputAsmName : inputAsmName;
 
-        Optional<Path> outputAsmName = outputPaths
-                .keySet()
+        Optional<Path> outputPathOptional = outputPaths
                 .stream()
-                .filter(path -> ByteCodeModificationMojo
-                        .pathToAsmName(path, outputDirPath)
-                        .equals(correctOutputAsmName)
-                )
-                .findAny();
+                .filter(path -> ModifyBytecodeMojo.pathToAsmName(path, outputDirPath).equals(inputAsmName))
+                .findFirst();
         MatcherAssert.assertThat(
                 "Can't find output .class file with name in ASM format: " + correctOutputAsmName,
-                outputAsmName.isPresent(),
+                outputPathOptional.isPresent(),
                 Matchers.equalTo(true)
         );
-        outputPaths.put(outputAsmName.get(), true);
-        inputClass.setValue(true);
+        outputPaths.remove(outputPathOptional.get());
 
         ClassNode classNode = getClassNode(correctOutputAsmName, outputDirPath);
         MatcherAssert.assertThat(
@@ -366,7 +345,7 @@ public class ByteCodeModificationMojoTest {
                         classNode.invisibleAnnotations
                                 .stream()
                                 .map(a -> a.desc)
-                                .anyMatch(ASM_VERSIONIZED_ANNOTATION::equals),
+                                .anyMatch(ASM_DESC_VERSIONIZED::equals),
                         Matchers.equalTo(true)
                 );
 
@@ -468,39 +447,38 @@ public class ByteCodeModificationMojoTest {
     }
 
     private Path asmNameToPath(String asmName, Path dir) {
-        return dir.resolve(asmName + ByteCodeModificationMojo.EXTENSION_CLASS);
+        return dir.resolve(asmName + ModifyBytecodeMojo.EXTENSION_CLASS);
     }
 
     private void checkClassA(
-            Map.Entry<String, Boolean> inputClass,
-            Map<Path, Boolean> outputPaths,
+            String inputAsmName,
+            Collection <Path> outputPaths,
             Path outputDirPath
     ) throws IOException {
 
         Set<String> defaultClassChecks = getAllDefaultClassChecks();
         ClassNode classNode = doDefaultClassChecks(
-                inputClass,
+                inputAsmName,
                 outputPaths,
                 outputDirPath,
                 defaultClassChecks,
                 true
         );
 
-        String inputAsmName = inputClass.getKey();
-        MatcherAssert.assertThat(
-                "The output class for " + inputAsmName + "doesn't have field " + ASM_B_FIELD,
-                classNode.fields.stream().map(f -> f.desc).anyMatch(ASM_B_FIELD::equals),
-                Matchers.equalTo(true)
-        );
-        MatcherAssert.assertThat(
-                "The output class for " + inputAsmName + "doesn't have field " + ASM_C_FIELD,
-                classNode.fields.stream().map(f -> f.desc).anyMatch(ASM_C_FIELD::equals),
-                Matchers.equalTo(true)
-        );
         MatcherAssert.assertThat(
                 "The output class for " + inputAsmName + " has wrong number of fields",
                 classNode.fields.size(),
                 Matchers.equalTo(2)
+        );
+        MatcherAssert.assertThat(
+                "The output class for " + inputAsmName + "doesn't have field " + ASM_DESC_B,
+                classNode.fields.stream().map(f -> f.desc).anyMatch(ASM_DESC_B::equals),
+                Matchers.equalTo(true)
+        );
+        MatcherAssert.assertThat(
+                "The output class for " + inputAsmName + "doesn't have field " + ASM_DESC_C,
+                classNode.fields.stream().map(f -> f.desc).anyMatch(ASM_DESC_C::equals),
+                Matchers.equalTo(true)
         );
 
         classNode.fields.forEach(field -> doDefaultFieldChecks(
@@ -517,24 +495,23 @@ public class ByteCodeModificationMojoTest {
     }
 
     private void checkClassB(
-            Map.Entry<String, Boolean> inputClass,
-            Map<Path, Boolean> outputPaths,
+            String inputAsmName,
+            Collection<Path> outputPaths,
             Path outputDirPath
     ) throws IOException {
 
         Set<String> defaultClassChecks = getAllDefaultClassChecks();
         ClassNode classNode = doDefaultClassChecks(
-                inputClass,
+                inputAsmName,
                 outputPaths,
                 outputDirPath,
                 defaultClassChecks,
                 true
         );
 
-        String inputAsmName = inputClass.getKey();
         MatcherAssert.assertThat(
-                "The output class for " + inputAsmName + "doesn't have field " + ASM_C_FIELD,
-                classNode.fields.stream().map(f -> f.desc).anyMatch(ASM_C_FIELD::equals),
+                "The output class for " + inputAsmName + "doesn't have field " + ASM_DESC_C,
+                classNode.fields.stream().map(f -> f.desc).anyMatch(ASM_DESC_C::equals),
                 Matchers.equalTo(true)
         );
         MatcherAssert.assertThat(
@@ -554,24 +531,23 @@ public class ByteCodeModificationMojoTest {
     }
 
     private void checkClassC(
-            Map.Entry<String, Boolean> inputClass,
-            Map<Path, Boolean> outputPaths,
+            String inputAsmName,
+            Collection<Path> outputPaths,
             Path outputDirPath
     ) throws IOException {
 
         Set<String> defaultClassChecks = getAllDefaultClassChecks();
         ClassNode classNode = doDefaultClassChecks(
-                inputClass,
+                inputAsmName,
                 outputPaths,
                 outputDirPath,
                 defaultClassChecks,
                 false
         );
 
-        String inputAsmName = inputClass.getKey();
         MatcherAssert.assertThat(
-                "The output class for " + inputAsmName + "doesn't have field " + ASM_A_FIELD,
-                classNode.fields.stream().map(f -> f.desc).anyMatch(ASM_A_FIELD::equals),
+                "The output class for " + inputAsmName + "doesn't have field " + ASM_DESC_A,
+                classNode.fields.stream().map(f -> f.desc).anyMatch(ASM_DESC_A::equals),
                 Matchers.equalTo(true)
         );
         MatcherAssert.assertThat(
@@ -594,21 +570,20 @@ public class ByteCodeModificationMojoTest {
     }
 
     private void checkClassInterfaceUsage(
-        Map.Entry<String, Boolean> inputClass,
-        Map<Path, Boolean> outputPaths,
+        String inputAsmName,
+        Collection<Path> outputPaths,
         Path outputDirPath
     ) throws IOException {
 
         Set<String> defaultClassChecks = getAllDefaultClassChecks();
         ClassNode classNode = doDefaultClassChecks(
-                inputClass,
+                inputAsmName,
                 outputPaths,
                 outputDirPath,
                 defaultClassChecks,
                 true
         );
 
-        String inputAsmName = inputClass.getKey();
         MatcherAssert.assertThat(
                 "The output class for " + inputAsmName + " has wrong number of fields",
                 classNode.fields.size(),
@@ -621,4 +596,8 @@ public class ByteCodeModificationMojoTest {
                 Matchers.equalTo(1)
         );
     }
-} 
+
+    private static String asmNameToAsmDesc(String asmClass) {
+        return "L" + asmClass + ";";
+    }
+}
