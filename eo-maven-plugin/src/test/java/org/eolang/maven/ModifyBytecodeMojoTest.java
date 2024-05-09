@@ -129,7 +129,6 @@ public class ModifyBytecodeMojoTest {
                 case ASM_C:
                     checkClassC(inputAsmName, outputPaths, outputDirPath);
                     break;
-                case ASM_VERSIONIZED:
                 case "Interface":
                     checkClassInterfaceUsage(inputAsmName, outputPaths, outputDirPath);
                     break;
