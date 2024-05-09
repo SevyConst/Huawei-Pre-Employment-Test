@@ -42,15 +42,14 @@ import java.util.stream.Collectors;
 
 public class ModifyBytecodeMojoTest {
 
-    private static final Set<String> GLOB_JAVA_FILES = new SetOf<>("**/*.java");
-
-    public static final Path SRC = Paths.get("src/test/resources/org/eolang/maven/bytecode-modification/java-files");
-
     private static final Path RELATIVE_INPUT_DIR = Paths.get("target/classes");
     private static final Path RELATIVE_OUTPUT_DIR = Paths.get("target/modified-classes");
     private static final String HASH = "qwerty";
 
+    public static final Path SRC = Paths.get("src/test/resources/org/eolang/maven/bytecode-modification/java-files");
+
     public static final String EXTENSION_JAVA = ".java";
+    private static final Set<String> GLOB_JAVA_FILES = new SetOf<>("**/*.java");
 
     private static final String SUPER_CLASS_DEFAULT_CHECK = "SUPER_CLASS_DEFAULT_CHECK";
     private static final String INTERFACES_DEFAULT_CHECK = "INTERFACES_DEFAULT_CHECK";
@@ -81,24 +80,25 @@ public class ModifyBytecodeMojoTest {
     /**
      * 1. Read special .java files from the resources path.
      * <p>
-     * 2. Compile it to .class files and save binaries in the input directory.
+     * 2. Compile it to .class files and save binaries to the input directory.
      * <p>
      * 3. Create {@code Set<String>}. A key is a relative path to .class file without
      * file extension - this format is convenient for using ASM library.
      * <p>
-     * 4. If input class doesn't have Versionized annotation AND doesn't contain the usage of any class that have
-     * Versionized annotation THEN remove it from the Set via method
+     * 4. If an input class doesn't have {@code Versionized} annotation AND doesn't contain the usage of any class that
+     * have {@code Versionized} annotation THEN remove corresponding item from the Set via method
      * {@link ModifyBytecodeMojoTest#removeUnmodifiedClasses(Set)}
      * <p>
-     * 5. Execute the mojo
+     * 5. Execute the {@link ModifyBytecodeMojo}
      * <p>
      * 6. Create {@code Collection<Path>} with paths to all binaries in the output directory.
      * <p>
-     * 7. Match input and output files. Check output files. As soon as one match was found remove corresponding
-     * item from the set and from the collection.
+     * 7. Match the input and the output files. As soon as one match was defined remove the corresponding item from the
+     * set and remove the corresponding item from the collection. In the same for-loop explore and check the output
+     * binaries via ASM library.
      */
     @Test
-    public void fullIntegrationTest(@TempDir final Path temp) throws Exception {
+    public void bigIntegrationTest(@TempDir final Path temp) throws Exception {
         Path inputDirPath = temp.resolve(RELATIVE_INPUT_DIR);
         Path outputDirPath = temp.resolve(RELATIVE_OUTPUT_DIR);
 
