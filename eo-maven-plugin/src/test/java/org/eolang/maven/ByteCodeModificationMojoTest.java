@@ -72,16 +72,21 @@ public class ByteCodeModificationMojoTest {
     private static final String ASM_B_FIELD = "Lqwerty/org/eolang/B;";
     private static final String ASM_C_FIELD = "Lorg/eolang/C;";
 
-
     /**
      *
      * 1) Read special .java files from the resources path
-     * 2) Compile it to .class files
+     * 2) Compile it to .class files and save binaries in the input directory
      * 3) Create {@link Map}:
-     *      key - path to .class file (Paths are saved the in ASM format - relative path without file extension),
-     *      value - is corresponding .class file found in the output directory (at this stage all values are false)
+     *      key - path to the input .class file
+     *      (paths are saved the in ASM format - relative path without file extension),
+     *      value - is corresponding .class file matched with file in the output directory
+     *      (at this stage all values are false)
      * 4) Execute the mojo
-     * 5) Find corresponding .class files in the output directory
+     * 5) Find all created .class files in the output directory. Create one more {@link Map}:
+     *      key - path to output .class file {@link Path}
+     *      value - is this file matched to the input .class files
+     *      (at this stage all values are false)
+     * 6) Find corresponding .class files in the output directory. Fill values in these two Maps
      */
     @Test
     public void fullIntegrationTest(@TempDir final Path temp) throws Exception {
