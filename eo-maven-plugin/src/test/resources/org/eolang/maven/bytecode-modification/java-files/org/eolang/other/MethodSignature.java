@@ -25,7 +25,7 @@
 package org.eolang.other;
 
 class MethodSignature {
-    private VersionizedClass someMethod() {
-        return new VersionizedClass();
+    private SimpleClass someMethod() {
+        return new SimpleClass();
     }
 }

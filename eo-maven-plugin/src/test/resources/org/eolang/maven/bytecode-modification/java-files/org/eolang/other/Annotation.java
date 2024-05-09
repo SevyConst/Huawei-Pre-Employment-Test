@@ -24,10 +24,15 @@
 
 package org.eolang.other;
 
-import org.eolang.interfaces.InterfaceVersionized;
+import org.eolang.Versionized;
 
-import java.util.List;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
-class Generic {
-    void someMethod(List<? extends InterfaceVersionized> list) {}
+@Versionized
+@Target(ElementType.FIELD)
+@Retention(RetentionPolicy.SOURCE)
+public @interface Annotation {
 }

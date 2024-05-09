@@ -80,7 +80,6 @@ public class ByteCodeModificationMojo extends SafeMojo{
 
     /**
      * Copy .class file if it has @Versionized annotation.
-     *
      * @return input path and output paths of .class in ASM format (relative path without extension)
      */
     private Optional<Map.Entry<String, String>> copyIfVersionized(Path inputPath) {
@@ -136,8 +135,8 @@ public class ByteCodeModificationMojo extends SafeMojo{
     /**
      * Obtain relative path without file extension.
      */
-    public static String pathToAsmName(Path inputPath, Path inputDir) {
-        String relativePath = inputDir.relativize(inputPath).toString();
+    public static String pathToAsmName(Path path, Path dir) {
+        String relativePath = dir.relativize(path).toString();
         return relativePath.substring(0, relativePath.length() - EXTENSION_CLASS.length());
     }
 

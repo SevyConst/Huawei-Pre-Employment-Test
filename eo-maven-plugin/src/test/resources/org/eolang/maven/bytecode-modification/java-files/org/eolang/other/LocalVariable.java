@@ -26,6 +26,6 @@ package org.eolang.other;
 
 class LocalVariable {
     public void someMethod() {
-        VersionizedClass obj = new VersionizedClass();
+        SimpleClass obj = new SimpleClass();
     }
 }
