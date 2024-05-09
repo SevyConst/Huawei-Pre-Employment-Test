@@ -87,7 +87,8 @@ public class ModifyBytecodeMojo extends SafeMojo{
         try {
             classReader = new ClassReader(Files.readAllBytes(inputPath));
         } catch (IOException e) {
-                throw new Error("Can't read file " + inputPath, e);
+            // TODO choose exception
+            throw new RuntimeException("Can't read file " + inputPath, e);
         }
 
         VisitorVersionized visitorVersionized = new VisitorVersionized();
@@ -110,7 +111,8 @@ public class ModifyBytecodeMojo extends SafeMojo{
             Files.createDirectories(outputPath.getParent());
             Files.write(outputPath, classWriter.toByteArray());
         } catch (IOException e) {
-            throw new Error("can't write file " + outputPath, e);
+            // TODO choose exception
+            throw new RuntimeException("can't write file " + outputPath, e);
         }
 
         return Optional.of(new AbstractMap.SimpleEntry<>(inputAsm, outputAsm));
@@ -145,7 +147,8 @@ public class ModifyBytecodeMojo extends SafeMojo{
         try {
             classReader = new ClassReader(Files.readAllBytes(inputPath));
         } catch (IOException e) {
-            throw new Error("Can't read file " + inputPath, e);
+            // TODO choose exception
+            throw new RuntimeException("Can't read file " + inputPath, e);
         }
 
         String inputAsmName = pathToAsmName(inputPath, inputDir);
@@ -164,7 +167,9 @@ public class ModifyBytecodeMojo extends SafeMojo{
                 Files.createDirectories(outputPath.getParent());
                 Files.write(outputPath, classWriter.toByteArray());
             } catch (IOException e) {
-                throw new Error("can't write file " + outputPath, e);
+                // TODO choose exception
+
+                throw new RuntimeException("can't write file " + outputPath, e);
             }
         }
     }
@@ -174,7 +179,8 @@ public class ModifyBytecodeMojo extends SafeMojo{
         try{
             classReader = new ClassReader(Files.readAllBytes(outputPath));
         } catch (IOException e) {
-            throw new Error("Can't read file " + outputPath, e);
+            // TODO choose exception
+            throw new RuntimeException("Can't read file " + outputPath, e);
         }
         ClassWriter classWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS);
 
@@ -186,7 +192,8 @@ public class ModifyBytecodeMojo extends SafeMojo{
             try {
                 Files.write(outputPath, classWriter.toByteArray());
             } catch (IOException e) {
-                throw new Error("can't write file " + outputPath, e);
+                // TODO choose exception
+                throw new RuntimeException("can't write file " + outputPath, e);
             }
         }
     }

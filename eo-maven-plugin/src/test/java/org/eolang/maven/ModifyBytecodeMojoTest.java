@@ -50,6 +50,8 @@ public class ModifyBytecodeMojoTest {
     private static final Path RELATIVE_OUTPUT_DIR = Paths.get("target/modified-classes");
     private static final String HASH = "qwerty";
 
+    public static final String EXTENSION_JAVA = ".java";
+
     private static final String SUPER_CLASS_DEFAULT_CHECK = "SUPER_CLASS_DEFAULT_CHECK";
     private static final String INTERFACES_DEFAULT_CHECK = "INTERFACES_DEFAULT_CHECK";
     private static final String MODULE_DEFAULT_CHECK = "MODULE_DEFAULT_CHECK";
@@ -63,8 +65,6 @@ public class ModifyBytecodeMojoTest {
     private static final String NEST_HOST_CLASS_DEFAULT_CHECK = "NEST_HOST_CLASS_DEFAULT_CHECK";
     private static final String NEST_MEMBERS_DEFAULT_CHECK = "NEST_MEMBERS_DEFAULT_CHECK";
 
-    public static final String EXTENSION_JAVA = ".java";
-
     private static final char ASM_SLASH = '/';
     private static final String ASM_OBJECT = "java/lang/Object";
     private static final String ASM_DEFAULT_PATH = "org/eolang/";
@@ -76,19 +76,26 @@ public class ModifyBytecodeMojoTest {
     private static final String ASM_DESC_C = asmNameToAsmDesc(ASM_C);
     private static final String ASM_VERSIONIZED = ASM_DEFAULT_PATH + "Versionized";
     private static final String ASM_DESC_VERSIONIZED = asmNameToAsmDesc(ASM_VERSIONIZED);
+    private static final String ASM_
 
     /**
-     *
      * 1. Read special .java files from the resources path.
+     * <p>
      * 2. Compile it to .class files and save binaries in the input directory.
-     * 3. Create {@link Set} with all these binaries. Key of the Set is {}String - name
-     * 4. Execute the mojo
-     * 5. Find all created .class files in the output directory. Create one more {@link Map}:
-     *      key - path to output .class file {@link Path}
-     *      value - is this file matched to the input .class files? (at this stage all values are false)
-     * 6. Find corresponding .class files in the output directory. Check content of binaries via ASM library. Fill
-     *      values in these two maps. If input class doesn't have Versionized annotation, and it doesn't contain the
-     *      usage of any class with Versionized Annotation than it must have no match in output
+     * <p>
+     * 3. Create {@code Set<String>}. A key is a relative path to .class file without
+     * file extension - this format is convenient for using ASM library.
+     * <p>
+     * 4. If input class doesn't have Versionized annotation AND doesn't contain the usage of any class that have
+     * Versionized annotation THEN remove it from the Set via method
+     * {@link ModifyBytecodeMojoTest#removeUnmodifiedClasses(Set)}
+     * <p>
+     * 5. Execute the mojo
+     * <p>
+     * 6. Create {@code Collection<Path>} with paths to all binaries in the output directory.
+     * <p>
+     * 7. Match input and output files. Check output files. As soon as one match was found remove corresponding
+     * item from the set and from the collection.
      */
     @Test
     public void fullIntegrationTest(@TempDir final Path temp) throws Exception {
@@ -96,11 +103,13 @@ public class ModifyBytecodeMojoTest {
         Path outputDirPath = temp.resolve(RELATIVE_OUTPUT_DIR);
 
         compile(inputDirPath);
+
         Set<String> inputAsmNames = new Walk(inputDirPath)
                 .includes(ModifyBytecodeMojo.GLOB_CLASS_FILES)
                 .stream()
                 .map(path -> ModifyBytecodeMojo.pathToAsmName(path, inputDirPath))
                 .collect(Collectors.toSet());
+        removeUnmodifiedClasses(inputAsmNames);
 
         new FakeMaven(temp)
                 .with("inputDir", inputDirPath)
@@ -142,6 +151,10 @@ public class ModifyBytecodeMojoTest {
                 outputPaths.size(),
                 Matchers.equalTo(0)
         );
+    }
+
+    void removeUnmodifiedClasses(Set<String> inputAsmNames) {
+        inputAsmNames.remove(ASM_VERSIONIZED);
     }
 
     private void compile(Path dirWithInputClassFiles) {
