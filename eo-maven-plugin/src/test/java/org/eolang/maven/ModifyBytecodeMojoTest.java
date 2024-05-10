@@ -42,6 +42,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Disabled
+@SuppressWarnings("JTCOP.RuleAllTestsHaveProductionClass")
 public class ModifyBytecodeMojoTest {
 
     private static final Path RELATIVE_INPUT_DIR = Paths.get("target/classes");
@@ -91,7 +92,7 @@ public class ModifyBytecodeMojoTest {
     private static final String INPUT_ASM_INNER_CLASS_2 = "org/eolang/other/TestInnerClass2$InnerClass2";
 
     /**
-     * Move these two constants to the Mojo because it will use it
+     * TODO: Move these two constants to the Mojo because it will use it
      */
     public static final Set<String> GLOB_CLASS_FILES = new SetOf<>("**/*.class");
     public static final String EXTENSION_CLASS = ".class";
@@ -129,7 +130,7 @@ public class ModifyBytecodeMojoTest {
      * with {@code checkFile...}
      */
     @Test
-    public void bigIntegrationTest(@TempDir final Path temp) throws Exception {
+    public void checksAll(@TempDir final Path temp) throws Exception {
         Path inputDirPath = temp.resolve(RELATIVE_INPUT_DIR);
         Path outputDirPath = temp.resolve(RELATIVE_OUTPUT_DIR);
 
@@ -195,13 +196,13 @@ public class ModifyBytecodeMojoTest {
         }
 
         MatcherAssert.assertThat(
-                "Can't check input classes: " + unfoundInputAsmNames,
+                String.format("Can't find output for classes: %s", unfoundInputAsmNames),
                 unfoundInputAsmNames.size(),
                 Matchers.equalTo(0)
         );
 
         MatcherAssert.assertThat(
-                "Irrelevant output classes: " + outputPaths,
+                String.format("Irrelevant output classes: %s", outputPaths),
                 outputPaths.size(),
                 Matchers.equalTo(0)
         );
