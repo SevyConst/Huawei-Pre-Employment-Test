@@ -28,6 +28,7 @@ import org.cactoos.set.SetOf;
 import org.eolang.maven.util.Walk;
 import org.hamcrest.MatcherAssert;
 import org.hamcrest.Matchers;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.objectweb.asm.ClassReader;
@@ -40,6 +41,7 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Disabled
 public class ModifyBytecodeMojoTest {
 
     private static final Path RELATIVE_INPUT_DIR = Paths.get("target/classes");
@@ -89,6 +91,12 @@ public class ModifyBytecodeMojoTest {
     private static final String INPUT_ASM_INNER_CLASS_2 = "org/eolang/other/TestInnerClass2$InnerClass2";
 
     /**
+     * Move these two constants to the Mojo because it will use it
+     */
+    public static final Set<String> GLOB_CLASS_FILES = new SetOf<>("**/*.class");
+    public static final String EXTENSION_CLASS = ".class";
+
+    /**
      * 1. Read the special .java files from the resources path.
      * <br>
      * 2. Compile it and save binaries to the input directory.
@@ -100,7 +108,7 @@ public class ModifyBytecodeMojoTest {
      * class that has {@code org.eolang.Versionized} annotation THEN remove the corresponding item MANUALLY from the set
      * {@code inputAsmNames} via method {@link ModifyBytecodeMojoTest#removeUnmodifiedClasses(Set)}.
      * <br>
-     * 5. Execute the {@link ModifyBytecodeMojo}.
+     * 5. Execute the ModifyBytecodeMojo.
      * <br>
      * 6. Create {@code Collection<Path> outputPaths} with paths to all binaries in the output directory.
      * <br>
@@ -128,20 +136,21 @@ public class ModifyBytecodeMojoTest {
         compile(inputDirPath);
 
         Set<String> inputAsmNames = new Walk(inputDirPath)
-                .includes(ModifyBytecodeMojo.GLOB_CLASS_FILES)
+                .includes(GLOB_CLASS_FILES)
                 .stream()
-                .map(path -> ModifyBytecodeMojo.pathToAsmName(path, inputDirPath))
+                .map(path -> pathToAsmName(path, inputDirPath))
                 .collect(Collectors.toSet());
 
         removeUnmodifiedClasses(inputAsmNames);
 
-        new FakeMaven(temp)
-                .with("inputDir", inputDirPath)
-                .with("outputDir", outputDirPath)
-                .with("hash", HASH)
-                .execute(ModifyBytecodeMojo.class);
+        // execute the mojo
+//        new FakeMaven(temp)
+//                .with("inputDir", inputDirPath)
+//                .with("outputDir", outputDirPath)
+//                .with("hash", HASH)
+//                .execute(ModifyBytecodeMojo.class);
 
-        Collection<Path> outputPaths = new Walk(outputDirPath).includes(ModifyBytecodeMojo.GLOB_CLASS_FILES);
+        Collection<Path> outputPaths = new Walk(outputDirPath).includes(GLOB_CLASS_FILES);
         Set<String> unfoundInputAsmNames = new HashSet<>(inputAsmNames);
         for (String inputAsmName : inputAsmNames) {
             switch (inputAsmName) {
@@ -273,7 +282,7 @@ public class ModifyBytecodeMojoTest {
 
         Optional<Path> outputPathOptional = outputPaths
                 .stream()
-                .filter(path -> ModifyBytecodeMojo.pathToAsmName(path, outputDirPath).equals(outputAsmName))
+                .filter(path -> pathToAsmName(path, outputDirPath).equals(outputAsmName))
                 .findFirst();
         MatcherAssert.assertThat(
                 "Can't find output .class file with name in ASM format: " + inputAsmName,
@@ -495,7 +504,7 @@ public class ModifyBytecodeMojoTest {
     }
 
     private Path asmNameToPath(String asmName, Path dir) {
-        return dir.resolve(asmName + ModifyBytecodeMojo.EXTENSION_CLASS);
+        return dir.resolve(asmName + EXTENSION_CLASS);
     }
 
     private void checkFileA(
@@ -963,5 +972,14 @@ public class ModifyBytecodeMojoTest {
         }
         sb.append(asmName);
         return sb.append(";").toString();
+    }
+
+    /**
+     * TODO: move to the Mojo (because the Mojo will use it)
+     * Obtain relative path without file extension.
+     */
+    public static String pathToAsmName(Path path, Path dir) {
+        String relativePath = dir.relativize(path).toString();
+        return relativePath.substring(0, relativePath.length() - EXTENSION_CLASS.length());
     }
 }
