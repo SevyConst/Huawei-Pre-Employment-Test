@@ -24,8 +24,14 @@
 
 package org.eolang.other;
 
-class LocalVariable {
-    public void someMethod() {
-        SimpleClass obj = new SimpleClass();
-    }
-}
+import org.eolang.Versionized;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+@Versionized
+@Target(ElementType.FIELD)
+@Retention(RetentionPolicy.CLASS)
+public @interface AnnotationWithVersionized {}

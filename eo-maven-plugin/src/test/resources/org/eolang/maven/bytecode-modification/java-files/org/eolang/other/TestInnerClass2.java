@@ -26,13 +26,8 @@ package org.eolang.other;
 
 import org.eolang.Versionized;
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
-
 @Versionized
-@Target(ElementType.FIELD)
-@Retention(RetentionPolicy.SOURCE)
-public @interface Annotation {
+public class TestInnerClass2 {
+
+    private class InnerClass2 {}
 }

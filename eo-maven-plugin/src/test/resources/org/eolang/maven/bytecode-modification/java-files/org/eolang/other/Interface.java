@@ -27,6 +27,4 @@ package org.eolang.other;
 import org.eolang.Versionized;
 
 @Versionized
-public interface Interface {
-    void someMethod(SimpleClass x);
-}
+public interface Interface {}

@@ -24,8 +24,9 @@
 
 package org.eolang.other;
 
-class MethodSignature {
-    private SimpleClass someMethod() {
-        return new SimpleClass();
-    }
+import org.eolang.Versionized;
+
+public class TestInnerClass {
+
+    private class InnerClass implements Interface{}
 }

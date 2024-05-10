@@ -66,36 +66,59 @@ public class ModifyBytecodeMojoTest {
 
     private static final char ASM_SLASH = '/';
     private static final String ASM_OBJECT = "java/lang/Object";
-    private static final String ASM_DEFAULT_PATH = "org/eolang/";
-    private static final String ASM_A = HASH + ASM_DEFAULT_PATH + "A";
-    private static final String ASM_DESC_A = asmNameToAsmDesc(ASM_A);
-    private static final String ASM_B = HASH + ASM_DEFAULT_PATH + "B";
-    private static final String ASM_DESC_B = asmNameToAsmDesc(ASM_B);
-    private static final String ASM_C = ASM_DEFAULT_PATH + "C";
-    private static final String ASM_DESC_C = asmNameToAsmDesc(ASM_C);
-    private static final String ASM_VERSIONIZED = ASM_DEFAULT_PATH + "Versionized";
-    private static final String ASM_DESC_VERSIONIZED = asmNameToAsmDesc(ASM_VERSIONIZED);
-    private static final String ASM_
+    private static final String INPUT_ASM_A = "org/eolang/A";
+    private static final String ASM_DESC_A = asmNameToAsmDesc(INPUT_ASM_A, true);
+    private static final String INPUT_ASM_B = "org/eolang/B";
+    private static final String ASM_DESC_B = asmNameToAsmDesc(INPUT_ASM_B, true);
+    private static final String INPUT_ASM_C = "org/eolang/C";
+    private static final String ASM_DESC_C = asmNameToAsmDesc(INPUT_ASM_C, false);
+    private static final String INPUT_ASM_VERSIONIZED = "org/eolang/Versionized";
+    private static final String ASM_DESC_VERSIONIZED = asmNameToAsmDesc(INPUT_ASM_VERSIONIZED, false);
+
+    private static final String INPUT_ASM_ANNOTATION_WITH_VERSIONIZED = "org/eolang/other/AnnotationWithVersionized";
+    private static final String ASM_DESC_ANNOTATION_TARGET = "Ljava/lang/annotation/Target;";
+    private static final String ASM_DESC_ANNOTATION_RETENTION = "Ljava/lang/annotation/Retention;";
+    private static final String ASM_DESC_INTERFACE_ANNOTATION = "java/lang/annotation/Annotation";
+    private static final String INPUT_ASM_INTERFACE = "org/eolang/other/Interface";
+    private static final String INPUT_ASM_TEST_INNER_CLASS = "org/eolang/other/TestInnerClass";
+    private static final String INPUT_ASM_INNER_CLASS = "org/eolang/other/TestInnerClass$InnerClass";
+    private static final String INPUT_ASM_TEST_STATIC_NESTED_CLASS = "org/eolang/other/TestStaticNestedClass";
+    private static final String INPUT_ASM_STATIC_NESTED_CLASS =
+            "org/eolang/other/TestStaticNestedClass$StaticNestedClass";
+    private static final String INPUT_ASM_TEST_INNER_CLASS_2 = "org/eolang/other/TestInnerClass2";
+    private static final String INPUT_ASM_INNER_CLASS_2 = "org/eolang/other/TestInnerClass2$InnerClass2";
 
     /**
-     * 1. Read special .java files from the resources path.
-     * <p>
-     * 2. Compile it to .class files and save binaries to the input directory.
-     * <p>
-     * 3. Create {@code Set<String>}. A key is a relative path to .class file without
-     * file extension - this format is convenient for using ASM library.
-     * <p>
-     * 4. If an input class doesn't have {@code Versionized} annotation AND doesn't contain the usage of any class that
-     * have {@code Versionized} annotation THEN remove corresponding item from the Set via method
-     * {@link ModifyBytecodeMojoTest#removeUnmodifiedClasses(Set)}
-     * <p>
-     * 5. Execute the {@link ModifyBytecodeMojo}
-     * <p>
-     * 6. Create {@code Collection<Path>} with paths to all binaries in the output directory.
-     * <p>
-     * 7. Match the input and the output files. As soon as one match was defined remove the corresponding item from the
-     * set and remove the corresponding item from the collection. In the same for-loop explore and check the output
-     * binaries via ASM library.
+     * 1. Read the special .java files from the resources path.
+     * <br>
+     * 2. Compile it and save binaries to the input directory.
+     * <br>
+     * 3. Create {@code Set<String> inputAsmNames}. The key is a relative path to .class file without file extension -
+     * this format is convenient for using ASM library.
+     * <br>
+     * 4. If an input class doesn't have {@code org.eolang.Versionized} annotation AND doesn't contain usage of any
+     * class that has {@code org.eolang.Versionized} annotation THEN remove the corresponding item MANUALLY from the set
+     * {@code inputAsmNames} via method {@link ModifyBytecodeMojoTest#removeUnmodifiedClasses(Set)}.
+     * <br>
+     * 5. Execute the {@link ModifyBytecodeMojo}.
+     * <br>
+     * 6. Create {@code Collection<Path> outputPaths} with paths to all binaries in the output directory.
+     * <br>
+     * 7. Match the input files and the output files. This operation made inside the 'for' loop as well as other
+     * important operations: 1) as soon as a match between two files was defined, explore and check the output file via
+     * ASM library. 2) After this remove the corresponding two files: the one from {@code inputAsmNames} and the one
+     * from {@code outputPaths}.
+     * <br>
+     * 8. If the {@code inputAsmNames} or the {@code outputPaths} still retain any items - assert that the test failed.
+     * <br>
+     * <br>
+     * The methods {@link ModifyBytecodeMojoTest#checkFileA(String, Collection, Path)},
+     * {@link ModifyBytecodeMojoTest#checkFileB(String, Collection, Path)},
+     * {@link ModifyBytecodeMojoTest#checkFileC(String, Collection, Path)} is used for test cases from
+     * <a href="https://github.com/objectionary/eo/issues/3091">the issue description</a>
+     * <br>
+     * Some additional information about other test cases can be found in the comments for the methods which started
+     * with {@code checkFile...}
      */
     @Test
     public void bigIntegrationTest(@TempDir final Path temp) throws Exception {
@@ -109,6 +132,7 @@ public class ModifyBytecodeMojoTest {
                 .stream()
                 .map(path -> ModifyBytecodeMojo.pathToAsmName(path, inputDirPath))
                 .collect(Collectors.toSet());
+
         removeUnmodifiedClasses(inputAsmNames);
 
         new FakeMaven(temp)
@@ -118,30 +142,52 @@ public class ModifyBytecodeMojoTest {
                 .execute(ModifyBytecodeMojo.class);
 
         Collection<Path> outputPaths = new Walk(outputDirPath).includes(ModifyBytecodeMojo.GLOB_CLASS_FILES);
+        Set<String> unfoundInputAsmNames = new HashSet<>(inputAsmNames);
         for (String inputAsmName : inputAsmNames) {
             switch (inputAsmName) {
-                case ASM_A:
-                    checkClassA(inputAsmName, outputPaths, outputDirPath);
+                case INPUT_ASM_A:
+                    checkFileA(inputAsmName, outputPaths, outputDirPath);
                     break;
-                case ASM_B:
-                    checkClassB(inputAsmName, outputPaths, outputDirPath);
+                case INPUT_ASM_B:
+                    checkFileB(inputAsmName, outputPaths, outputDirPath);
                     break;
-                case ASM_C:
-                    checkClassC(inputAsmName, outputPaths, outputDirPath);
+                case INPUT_ASM_C:
+                    checkFileC(inputAsmName, outputPaths, outputDirPath);
                     break;
-                case "Interface":
-                    checkClassInterfaceUsage(inputAsmName, outputPaths, outputDirPath);
+                case INPUT_ASM_ANNOTATION_WITH_VERSIONIZED:
+                    checkFileAnnotationWithVersionized(inputAsmName, outputPaths, outputDirPath);
+                    break;
+                case INPUT_ASM_INTERFACE:
+                    checkFileInterfaceUsage(inputAsmName, outputPaths, outputDirPath);
+                    break;
+                case INPUT_ASM_INNER_CLASS:
+                    checkFileInnerClass(inputAsmName, outputPaths, outputDirPath);
+                    break;
+                case INPUT_ASM_TEST_STATIC_NESTED_CLASS:
+                    checkFileTestStaticNestedClass(inputAsmName, outputPaths, outputDirPath);
+                    break;
+                case INPUT_ASM_STATIC_NESTED_CLASS:
+                    checkFileStaticNestedClass(inputAsmName, outputPaths, outputDirPath);
+                    break;
+                case INPUT_ASM_TEST_INNER_CLASS_2:
+                    checkFileTestInnerClass2(inputAsmName, outputPaths, outputDirPath);
+                    break;
+                case INPUT_ASM_INNER_CLASS_2:
+                    checkFileInnerClass2(inputAsmName, outputPaths, outputDirPath);
                     break;
                 default:
-                    MatcherAssert.
+                    MatcherAssert.assertThat(
+                            "Unexpected input file: " + inputAsmName,
+                            true,
+                            Matchers.equalTo(false)
+                    );
             }
-
-            inputAsmNames.remove(inputAsmName);
+            unfoundInputAsmNames.remove(inputAsmName);
         }
 
         MatcherAssert.assertThat(
-                "Can't check input classes: " + inputAsmNames,
-                inputAsmNames.size(),
+                "Can't check input classes: " + unfoundInputAsmNames,
+                unfoundInputAsmNames.size(),
                 Matchers.equalTo(0)
         );
 
@@ -153,7 +199,8 @@ public class ModifyBytecodeMojoTest {
     }
 
     void removeUnmodifiedClasses(Set<String> inputAsmNames) {
-        inputAsmNames.remove(ASM_VERSIONIZED);
+        inputAsmNames.remove(INPUT_ASM_VERSIONIZED);
+        inputAsmNames.remove(INPUT_ASM_TEST_INNER_CLASS);
     }
 
     private void compile(Path dirWithInputClassFiles) {
@@ -222,53 +269,55 @@ public class ModifyBytecodeMojoTest {
             boolean isVersionized
     ) throws IOException {
 
-        String correctOutputAsmName = isVersionized ? HASH + File.separator + inputAsmName : inputAsmName;
+        String outputAsmName = isVersionized ? HASH + ASM_SLASH + inputAsmName : inputAsmName;
 
         Optional<Path> outputPathOptional = outputPaths
                 .stream()
-                .filter(path -> ModifyBytecodeMojo.pathToAsmName(path, outputDirPath).equals(inputAsmName))
+                .filter(path -> ModifyBytecodeMojo.pathToAsmName(path, outputDirPath).equals(outputAsmName))
                 .findFirst();
         MatcherAssert.assertThat(
-                "Can't find output .class file with name in ASM format: " + correctOutputAsmName,
+                "Can't find output .class file with name in ASM format: " + inputAsmName,
                 outputPathOptional.isPresent(),
                 Matchers.equalTo(true)
         );
         outputPaths.remove(outputPathOptional.get());
 
-        ClassNode classNode = getClassNode(correctOutputAsmName, outputDirPath);
+        ClassNode classNode = getClassNode(outputAsmName, outputDirPath);
         MatcherAssert.assertThat(
-                "Wrong name in ASM format",
+                "The output class for " + inputAsmName + " has wrong name in ASM format",
                 classNode.name,
-                Matchers.equalTo(correctOutputAsmName)
+                Matchers.equalTo(outputAsmName)
         );
 
         if (defaultClassChecks.contains(SUPER_CLASS_DEFAULT_CHECK)) {
             MatcherAssert.assertThat(
-                    correctOutputAsmName + " has wrong superclass",
+                    "The output class for " + inputAsmName + " has wrong superclass",
                     classNode.superName,
                     Matchers.equalTo(ASM_OBJECT)
             );
         }
 
+        if (defaultClassChecks.contains(INNER_CLASSES_DEFAULT_CHECK)) {
+            MatcherAssert.assertThat(
+                    "The output class for " + inputAsmName + " has irrelevant inner classes. "
+                            + classNode.innerClasses,
+                    classNode.innerClasses.size(),
+                    Matchers.equalTo(0)
+            );
+        }
+
         if (defaultClassChecks.contains(INTERFACES_DEFAULT_CHECK)) {
             MatcherAssert.assertThat(
-                    correctOutputAsmName + " has irrelevant interfaces: " + classNode.interfaces,
+                    "The output class for " + inputAsmName + " has irrelevant interfaces. "
+                            + classNode.interfaces,
                     classNode.interfaces.size(),
                     Matchers.equalTo(0)
             );
         }
 
-        String sourceFile = correctOutputAsmName.substring(
-                correctOutputAsmName.lastIndexOf(ASM_SLASH) + 1) + EXTENSION_JAVA;
-        MatcherAssert.assertThat(
-                correctOutputAsmName + "has wrong name inside bytecode: ",
-                classNode.sourceFile,
-                Matchers.equalTo(sourceFile)
-        );
-
         if (defaultClassChecks.contains(MODULE_DEFAULT_CHECK)) {
             MatcherAssert.assertThat(
-                    correctOutputAsmName + " has wrong module: " + classNode.module,
+                    "The output class for " + inputAsmName + " has wrong module",
                     classNode.module,
                     Matchers.equalTo(null)
             );
@@ -276,7 +325,7 @@ public class ModifyBytecodeMojoTest {
 
         if (defaultClassChecks.contains(OUTER_CLASS_DEFAULT_CHECK)) {
             MatcherAssert.assertThat(
-                    correctOutputAsmName + " has outer class",
+                    "The output class for " + inputAsmName + " has outer class",
                     classNode.outerClass,
                     Matchers.equalTo(null)
             );
@@ -285,37 +334,36 @@ public class ModifyBytecodeMojoTest {
         doDefaultClassChecksAnnotations(
                 classNode,
                 defaultClassChecks,
-                correctOutputAsmName,
+                inputAsmName,
                 isVersionized
         );
 
         if (defaultClassChecks.contains(ATTRS_DEFAULT_CHECK)) {
             MatcherAssert.assertThat(
-                    correctOutputAsmName + " has irrelevant attributes" + classNode.attrs,
+                    "The output class for " + inputAsmName + " has irrelevant attributes",
                     classNode.attrs,
                     Matchers.equalTo(null)
             );
         }
 
-        if (defaultClassChecks.contains(INNER_CLASSES_DEFAULT_CHECK)) {
-            MatcherAssert.assertThat(
-                    correctOutputAsmName + "has irrelevant inner classes" + classNode.innerClasses,
-                    classNode.innerClasses.size(),
-                    Matchers.equalTo(0)
-            );
-        }
-
         if (defaultClassChecks.contains(NEST_HOST_CLASS_DEFAULT_CHECK)) {
             MatcherAssert.assertThat(
-                    correctOutputAsmName + "has nest host class",
+                    "The output class for " + inputAsmName +  " has nest host class",
                     classNode.nestHostClass,
                     Matchers.equalTo(null)
+            );
+            String sourceFile = outputAsmName.substring(
+                    outputAsmName.lastIndexOf(ASM_SLASH) + 1) + EXTENSION_JAVA;
+            MatcherAssert.assertThat(
+                    "The source .java file for " + inputAsmName + " has wrong name inside bytecode",
+                    classNode.sourceFile,
+                    Matchers.equalTo(sourceFile)
             );
         }
 
         if (defaultClassChecks.contains(NEST_MEMBERS_DEFAULT_CHECK)) {
             MatcherAssert.assertThat(
-                    correctOutputAsmName + " has irrelevant nest members" + classNode.nestMembers,
+                    "The output class for " + inputAsmName + " has irrelevant nest members",
                     classNode.nestMembers,
                     Matchers.equalTo(null)
             );
@@ -330,66 +378,54 @@ public class ModifyBytecodeMojoTest {
     private void doDefaultClassChecksAnnotations(
             ClassNode classNode,
             Set<String> defaultClassChecks,
-            String correctOutputAsmName,
+            String inputAsmName,
             boolean isVersionized
     ) {
-
-        if (defaultClassChecks.contains(VISIBLE_ANNOTATIONS_DEFAULT_CHECK)) {
+        if (defaultClassChecks.contains(VISIBLE_TYPE_ANNOTATIONS_DEFAULT_CHECK)) {
             MatcherAssert.assertThat(
-                    correctOutputAsmName + " has irrelevant visible annotations: "
-                            + classNode.visibleAnnotations,
-                    classNode.visibleAnnotations,
+                    "The output class for " + inputAsmName + " has irrelevant visible type annotations",
+                    classNode.visibleTypeAnnotations,
+                    Matchers.equalTo(null)
+            );
+        }
+        if (defaultClassChecks.contains(INVISIBLE_TYPE_ANNOTATIONS_DEFAULT_CHECK)) {
+            MatcherAssert.assertThat(
+                    "The output class for " + inputAsmName + " has irrelevant invisible type annotations",
+                    classNode.invisibleTypeAnnotations,
                     Matchers.equalTo(null)
             );
         }
 
+        if (defaultClassChecks.contains(VISIBLE_ANNOTATIONS_DEFAULT_CHECK)) {
+            MatcherAssert.assertThat(
+                    "The output class for " + inputAsmName + " has irrelevant visible annotations",
+                    classNode.visibleAnnotations,
+                    Matchers.equalTo(null)
+            );
+        }
         if (defaultClassChecks.contains(INVISIBLE_ANNOTATIONS_DEFAULT_CHECK)) {
-
             if (isVersionized) {
                 MatcherAssert.assertThat(
-                        correctOutputAsmName + " has wrong number of invisible annotations: "
+                        "The output class for " + inputAsmName + " has wrong number of invisible annotations. "
                                 + classNode.invisibleAnnotations,
                         classNode.invisibleAnnotations.size(),
                         Matchers.equalTo(1)
                 );
                 MatcherAssert.assertThat(
-                        correctOutputAsmName + " does not have Versionized annotation",
+                        "The output class for " + inputAsmName + " doesn't have Versionized annotation",
                         classNode.invisibleAnnotations
                                 .stream()
                                 .map(a -> a.desc)
                                 .anyMatch(ASM_DESC_VERSIONIZED::equals),
                         Matchers.equalTo(true)
                 );
-
-
             } else {
                 MatcherAssert.assertThat(
-                        correctOutputAsmName + " has irrelevant invisible annotations: "
-                                + classNode.invisibleAnnotations,
+                        "The output class for " + inputAsmName + " has irrelevant invisible annotations",
                         classNode.invisibleAnnotations,
                         Matchers.equalTo(null)
                 );
             }
-        }
-
-
-
-        if (defaultClassChecks.contains(VISIBLE_TYPE_ANNOTATIONS_DEFAULT_CHECK)) {
-            MatcherAssert.assertThat(
-                    correctOutputAsmName + " has irrelevant visible type annotations: "
-                            + classNode.visibleTypeAnnotations,
-                    classNode.visibleTypeAnnotations,
-                    Matchers.equalTo(null)
-            );
-        }
-
-        if (defaultClassChecks.contains(INVISIBLE_TYPE_ANNOTATIONS_DEFAULT_CHECK)) {
-            MatcherAssert.assertThat(
-                    correctOutputAsmName + " has irrelevant invisible type annotations: "
-                            + classNode.invisibleTypeAnnotations,
-                    classNode.invisibleTypeAnnotations,
-                    Matchers.equalTo(null)
-            );
         }
     }
 
@@ -462,7 +498,7 @@ public class ModifyBytecodeMojoTest {
         return dir.resolve(asmName + ModifyBytecodeMojo.EXTENSION_CLASS);
     }
 
-    private void checkClassA(
+    private void checkFileA(
             String inputAsmName,
             Collection <Path> outputPaths,
             Path outputDirPath
@@ -478,18 +514,20 @@ public class ModifyBytecodeMojoTest {
         );
 
         MatcherAssert.assertThat(
-                "The output class for " + inputAsmName + " has wrong number of fields",
+                "The output class for " + inputAsmName + " has wrong number of fields. "
+                        + classNode.fields,
                 classNode.fields.size(),
                 Matchers.equalTo(2)
         );
+
         MatcherAssert.assertThat(
                 "The output class for " + inputAsmName + "doesn't have field " + ASM_DESC_B,
-                classNode.fields.stream().map(f -> f.desc).anyMatch(ASM_DESC_B::equals),
+                classNode.fields.stream().anyMatch(f -> f.desc.equals(ASM_DESC_B)),
                 Matchers.equalTo(true)
         );
         MatcherAssert.assertThat(
                 "The output class for " + inputAsmName + "doesn't have field " + ASM_DESC_C,
-                classNode.fields.stream().map(f -> f.desc).anyMatch(ASM_DESC_C::equals),
+                classNode.fields.stream().anyMatch(f -> f.desc.equals(ASM_DESC_C)),
                 Matchers.equalTo(true)
         );
 
@@ -500,13 +538,13 @@ public class ModifyBytecodeMojoTest {
 
         MatcherAssert.assertThat(
                 "The output class for " + inputAsmName
-                        + " has irrelevant number of methods/constructors: " + classNode.methods,
+                        + " has irrelevant number of methods/constructors. " + classNode.methods,
                 classNode.methods.size(),
                 Matchers.equalTo(1)
         );
     }
 
-    private void checkClassB(
+    private void checkFileB(
             String inputAsmName,
             Collection<Path> outputPaths,
             Path outputDirPath
@@ -522,27 +560,28 @@ public class ModifyBytecodeMojoTest {
         );
 
         MatcherAssert.assertThat(
-                "The output class for " + inputAsmName + "doesn't have field " + ASM_DESC_C,
-                classNode.fields.stream().map(f -> f.desc).anyMatch(ASM_DESC_C::equals),
-                Matchers.equalTo(true)
-        );
-        MatcherAssert.assertThat(
-                "The output class for " + inputAsmName + " has wrong number of fields",
+                "The output class for " + inputAsmName + " has wrong number of fields. "
+                        + classNode.fields,
                 classNode.fields.size(),
                 Matchers.equalTo(1)
+        );
+        MatcherAssert.assertThat(
+                "The output class for " + inputAsmName + "doesn't have the field",
+                classNode.fields.get(0).desc,
+                Matchers.equalTo(ASM_DESC_C)
         );
 
         doDefaultFieldChecks(classNode.fields.get(0), getAllDefaultFieldChecks(), inputAsmName);
 
         MatcherAssert.assertThat(
                 "The output class for " + inputAsmName
-                        + " has irrelevant number of methods/constructors: " + classNode.methods,
+                        + " has irrelevant number of methods/constructors. " + classNode.methods,
                 classNode.methods.size(),
                 Matchers.equalTo(1)
         );
     }
 
-    private void checkClassC(
+    private void checkFileC(
             String inputAsmName,
             Collection<Path> outputPaths,
             Path outputDirPath
@@ -558,15 +597,16 @@ public class ModifyBytecodeMojoTest {
         );
 
         MatcherAssert.assertThat(
-                "The output class for " + inputAsmName + "doesn't have field " + ASM_DESC_A,
-                classNode.fields.stream().map(f -> f.desc).anyMatch(ASM_DESC_A::equals),
-                Matchers.equalTo(true)
-        );
-        MatcherAssert.assertThat(
-                "The output class for " + inputAsmName + " has wrong number of fields",
+                "The output class for " + inputAsmName + " has wrong number of fields. ",
                 classNode.fields.size(),
                 Matchers.equalTo(1)
         );
+        MatcherAssert.assertThat(
+                "The output class for " + inputAsmName + "doesn't have the field",
+                classNode.fields.get(0).desc,
+                Matchers.equalTo(ASM_DESC_A)
+        );
+
 
         classNode.fields.forEach(field -> doDefaultFieldChecks(
                 field, getAllDefaultFieldChecks(),
@@ -575,13 +615,13 @@ public class ModifyBytecodeMojoTest {
 
         MatcherAssert.assertThat(
                 "The output class for " + inputAsmName
-                        + " has irrelevant number of methods/constructors: " + classNode.methods,
+                        + " has irrelevant number of methods/constructors. " + classNode.methods,
                 classNode.methods.size(),
                 Matchers.equalTo(1)
         );
     }
 
-    private void checkClassInterfaceUsage(
+    private void checkFileInterfaceUsage(
         String inputAsmName,
         Collection<Path> outputPaths,
         Path outputDirPath
@@ -597,19 +637,331 @@ public class ModifyBytecodeMojoTest {
         );
 
         MatcherAssert.assertThat(
-                "The output class for " + inputAsmName + " has wrong number of fields",
+                "The output class for " + inputAsmName + " has wrong number of fields. ",
                 classNode.fields.size(),
                 Matchers.equalTo(0)
         );
         MatcherAssert.assertThat(
                 "The output class for " + inputAsmName
-                        + " has irrelevant number of methods/constructors: " + classNode.methods,
+                        + " has irrelevant number of methods/constructors. " + classNode.methods,
+                classNode.methods.size(),
+                Matchers.equalTo(0)
+        );
+    }
+
+    private void checkFileAnnotationWithVersionized(
+            String inputAsmName,
+            Collection<Path> outputPaths,
+            Path outputDirPath
+    ) throws IOException {
+
+        Set<String> defaultClassChecks = getAllDefaultClassChecks();
+        defaultClassChecks.remove(INTERFACES_DEFAULT_CHECK);
+        defaultClassChecks.remove(VISIBLE_ANNOTATIONS_DEFAULT_CHECK);
+
+        ClassNode classNode = doDefaultClassChecks(
+                inputAsmName,
+                outputPaths,
+                outputDirPath,
+                defaultClassChecks,
+                true
+        );
+
+        MatcherAssert.assertThat(
+                "The output class for " + inputAsmName + " has irrelevant number of interfaces. "
+                        + classNode.interfaces,
+                classNode.interfaces.size(),
+                Matchers.equalTo(1)
+        );
+        MatcherAssert.assertThat(
+                "The output class for " + inputAsmName + " doesn't have interface",
+                classNode.interfaces.get(0),
+                Matchers.equalTo(ASM_DESC_INTERFACE_ANNOTATION)
+        );
+
+        MatcherAssert.assertThat(
+                "The output class for " + inputAsmName + " has irrelevant number of visible annotation. "
+                        + classNode.interfaces,
+                classNode.visibleAnnotations.size(),
+                Matchers.equalTo(2)
+        );
+        MatcherAssert.assertThat(
+                "The output class for " + inputAsmName + " doesn't have annotation "
+                        + ASM_DESC_ANNOTATION_TARGET,
+                classNode.visibleAnnotations.stream().anyMatch(a -> a.desc.equals(ASM_DESC_ANNOTATION_TARGET)),
+                Matchers.equalTo(true)
+        );
+        MatcherAssert.assertThat(
+                "The output class for " + inputAsmName + " doesn't have annotation "
+                        + ASM_DESC_ANNOTATION_RETENTION,
+                classNode.visibleAnnotations.stream().anyMatch(a -> a.desc.equals(ASM_DESC_ANNOTATION_RETENTION)),
+                Matchers.equalTo(true)
+        );
+
+        classNode.fields.forEach(field -> doDefaultFieldChecks(
+                field, getAllDefaultFieldChecks(),
+                inputAsmName
+        ));
+
+        MatcherAssert.assertThat(
+                "The output class for " + inputAsmName
+                        + " has irrelevant number of methods/constructors. " + classNode.methods,
+                classNode.methods.size(),
+                Matchers.equalTo(0)
+        );
+    }
+
+    /**
+     * Host nested class ({@link ModifyBytecodeMojoTest#INPUT_ASM_TEST_INNER_CLASS}) doesn't contain annotation
+     * {@code Versionized} and doesn't contain any usage of any classes which is annotated by {@code Versionized} except
+     * the inner class implements interface which is annotated by {@code Versionized}
+     */
+    private void checkFileInnerClass(
+            String inputAsmName,
+            Collection<Path> outputPaths,
+            Path outputDirPath
+    ) throws IOException {
+
+        Set<String> defaultClassChecks = getAllDefaultClassChecks();
+        defaultClassChecks.remove(NEST_HOST_CLASS_DEFAULT_CHECK);
+        defaultClassChecks.remove(INTERFACES_DEFAULT_CHECK);
+        defaultClassChecks.remove(INNER_CLASSES_DEFAULT_CHECK);
+
+        ClassNode classNode = doDefaultClassChecks(
+                inputAsmName,
+                outputPaths,
+                outputDirPath,
+                defaultClassChecks,
+                false
+        );
+
+        String nestHostClass = inputAsmName.substring(0, inputAsmName.lastIndexOf('$'));
+        MatcherAssert.assertThat(
+                "Nest host class for " + inputAsmName + " has wrong name inside bytecode",
+                classNode.nestHostClass,
+                Matchers.equalTo(nestHostClass)
+        );
+
+        String sourceFile = inputAsmName.substring(
+                inputAsmName.lastIndexOf(ASM_SLASH) + 1,
+                inputAsmName.lastIndexOf('$')) + EXTENSION_JAVA;
+        MatcherAssert.assertThat(
+                "The source .java file for " + inputAsmName + " has wrong name inside bytecode",
+                classNode.sourceFile,
+                Matchers.equalTo(sourceFile)
+        );
+
+        MatcherAssert.assertThat(
+                "The output class for " + inputAsmName + " has wrong number of fields. ",
+                classNode.fields.size(),
+                Matchers.equalTo(1)
+        );
+        MatcherAssert.assertThat(
+                "The output class for " + inputAsmName
+                        + " has irrelevant number of methods/constructors. " + classNode.methods,
                 classNode.methods.size(),
                 Matchers.equalTo(1)
         );
     }
 
-    private static String asmNameToAsmDesc(String asmClass) {
-        return "L" + asmClass + ";";
+    /**
+     * This is a check for file {@link ModifyBytecodeMojoTest#INPUT_ASM_TEST_STATIC_NESTED_CLASS}
+     * <br>
+     * Check for the nested class is here
+     * {@link ModifyBytecodeMojoTest#checkFileStaticNestedClass(String, Collection, Path)}
+     * <br>
+     * This host nested class doesn't contain annotation {@code Versionized} and doesn't contain any usage of any
+     * classes annotated by {@code Versionized} except the inner class
+     */
+    private void checkFileTestStaticNestedClass(
+            String inputAsmName,
+            Collection<Path> outputPaths,
+            Path outputDirPath
+    ) throws IOException {
+        Set<String> defaultClassChecks = getAllDefaultClassChecks();
+        defaultClassChecks.remove(INNER_CLASSES_DEFAULT_CHECK);
+        defaultClassChecks.remove(NEST_MEMBERS_DEFAULT_CHECK);
+
+        ClassNode classNode = doDefaultClassChecks(
+                inputAsmName,
+                outputPaths,
+                outputDirPath,
+                defaultClassChecks,
+                false
+        );
+
+        MatcherAssert.assertThat(
+                "The output class for " + inputAsmName + " has wrong number of inner classes. "
+                        + classNode.innerClasses,
+                classNode.innerClasses.size(),
+                Matchers.equalTo(1)
+        );
+
+        MatcherAssert.assertThat(
+                "The output class for " + inputAsmName + " doesn't have inner class",
+                classNode.innerClasses.get(0).name,
+                Matchers.equalTo(HASH + ASM_SLASH + INPUT_ASM_STATIC_NESTED_CLASS));
+    }
+
+    /**
+     * The information about this test case could be found in the comment before the method
+     * {@link ModifyBytecodeMojoTest#checkFileTestStaticNestedClass}
+     */
+    private void checkFileStaticNestedClass(
+            String inputAsmName,
+            Collection<Path> outputPaths,
+            Path outputDirPath
+    ) throws IOException {
+
+        Set<String> defaultClassChecks = getAllDefaultClassChecks();
+        defaultClassChecks.remove(NEST_HOST_CLASS_DEFAULT_CHECK);
+        defaultClassChecks.remove(INNER_CLASSES_DEFAULT_CHECK);
+
+        ClassNode classNode = doDefaultClassChecks(
+                inputAsmName,
+                outputPaths,
+                outputDirPath,
+                defaultClassChecks,
+                true
+        );
+
+        String nestHostClass = inputAsmName.substring(0, inputAsmName.lastIndexOf('$'));
+        MatcherAssert.assertThat(
+                "Nest host class for " + inputAsmName + " has wrong name inside bytecode",
+                classNode.nestHostClass,
+                Matchers.equalTo(nestHostClass)
+        );
+
+        String sourceFile = inputAsmName.substring(
+                inputAsmName.lastIndexOf(ASM_SLASH) + 1,
+                inputAsmName.lastIndexOf('$')) + EXTENSION_JAVA;
+        MatcherAssert.assertThat(
+                "The source .java file for " + inputAsmName + " has wrong name inside bytecode",
+                classNode.sourceFile,
+                Matchers.equalTo(sourceFile)
+        );
+
+        MatcherAssert.assertThat(
+                "The output class for " + inputAsmName + " has wrong number of fields. ",
+                classNode.fields.size(),
+                Matchers.equalTo(0)
+        );
+        MatcherAssert.assertThat(
+                "The output class for " + inputAsmName
+                        + " has irrelevant number of methods/constructors. " + classNode.methods,
+                classNode.methods.size(),
+                Matchers.equalTo(1)
+        );
+    }
+
+    /**
+     * This is a check for file {@link ModifyBytecodeMojoTest#INPUT_ASM_TEST_INNER_CLASS_2}.
+     * <br>
+     * Check for the nested class is here
+     * {@link ModifyBytecodeMojoTest#checkFileInnerClass2(String, Collection, Path)}
+     * <br>
+     * This host nested class is annotated by {@code Versionized} and the inner class doesn't contain any usage of any
+     * class annotated by {@code Versionized}
+     */
+    private void checkFileTestInnerClass2(
+            String inputAsmName,
+            Collection<Path> outputPaths,
+            Path outputDirPath
+    ) throws IOException {
+        Set<String> defaultClassChecks = getAllDefaultClassChecks();
+        defaultClassChecks.remove(INNER_CLASSES_DEFAULT_CHECK);
+        defaultClassChecks.remove(NEST_MEMBERS_DEFAULT_CHECK);
+
+        ClassNode classNode = doDefaultClassChecks(
+                inputAsmName,
+                outputPaths,
+                outputDirPath,
+                defaultClassChecks,
+                true
+        );
+
+        MatcherAssert.assertThat(
+                "The output class for " + inputAsmName + " has wrong number of inner classes. "
+                        + classNode.innerClasses,
+                classNode.innerClasses.size(),
+                Matchers.equalTo(1)
+        );
+        MatcherAssert.assertThat(
+                "The output class for " + inputAsmName + " doesn't have the inner class",
+                classNode.innerClasses.get(0).name,
+                Matchers.equalTo(INPUT_ASM_INNER_CLASS_2)
+        );
+
+        MatcherAssert.assertThat(
+                "The output class for " + inputAsmName + " has wrong number of nested members. "
+                + classNode.nestMembers,
+                classNode.nestMembers.size(),
+                Matchers.equalTo(1)
+        );
+        MatcherAssert.assertThat(
+                "The output class for " + inputAsmName + " doesn't have the nested the nested member",
+                classNode.nestMembers.get(0),
+                Matchers.equalTo(INPUT_ASM_INNER_CLASS_2)
+        );
+    }
+
+    /**
+     * The information about this test case could be found in the comment before the method
+     * {@link ModifyBytecodeMojoTest#checkFileTestInnerClass2}
+     */
+    private void checkFileInnerClass2(
+            String inputAsmName,
+            Collection<Path> outputPaths,
+            Path outputDirPath
+    ) throws IOException {
+        Set<String> defaultClassChecks = getAllDefaultClassChecks();
+        defaultClassChecks.remove(NEST_HOST_CLASS_DEFAULT_CHECK);
+        defaultClassChecks.remove(INTERFACES_DEFAULT_CHECK);
+        defaultClassChecks.remove(INNER_CLASSES_DEFAULT_CHECK);
+
+        ClassNode classNode = doDefaultClassChecks(
+                inputAsmName,
+                outputPaths,
+                outputDirPath,
+                defaultClassChecks,
+                false
+        );
+
+        String nestHostClass = HASH + ASM_SLASH + inputAsmName.substring(0, inputAsmName.lastIndexOf('$'));
+        MatcherAssert.assertThat(
+                "Nest host class for " + inputAsmName + " has wrong name inside bytecode",
+                classNode.nestHostClass,
+                Matchers.equalTo(nestHostClass)
+        );
+
+        String sourceFile = inputAsmName.substring(
+                inputAsmName.lastIndexOf(ASM_SLASH) + 1,
+                inputAsmName.lastIndexOf('$')) + EXTENSION_JAVA;
+        MatcherAssert.assertThat(
+                "The source .java file for " + inputAsmName + " has wrong name inside bytecode",
+                classNode.sourceFile,
+                Matchers.equalTo(sourceFile)
+        );
+
+        MatcherAssert.assertThat(
+                "The output class for " + inputAsmName + " has wrong number of fields. ",
+                classNode.fields.size(),
+                Matchers.equalTo(1)
+        );
+        MatcherAssert.assertThat(
+                "The output class for " + inputAsmName
+                        + " has irrelevant number of methods/constructors. " + classNode.methods,
+                classNode.methods.size(),
+                Matchers.equalTo(1)
+        );
+    }
+
+    private static String asmNameToAsmDesc(String asmName, boolean isVersionized) {
+        StringBuilder sb = new StringBuilder("L");
+        if (isVersionized) {
+            sb.append(HASH + ASM_SLASH);
+        }
+        sb.append(asmName);
+        return sb.append(";").toString();
     }
 }
