@@ -60,7 +60,13 @@ public class ModifyBytecodeMojo extends SafeMojo{
             property = "hash")
     private String hash;
 
-    // TODO write that algorithm consist of three steps - add links to three method
+    /**
+     * The core of the algorithm - three steps or 3 methods:
+     * {@link ModifyBytecodeMojo#copyIfVersionized(Path)}
+     * {@link ModifyBytecodeMojo#copyUsagesVersionized(Path, Map)}
+     * {@link ModifyBytecodeMojo#renameUsagesInVersionized(Path, Map)}
+     * See description of these method for more information
+      */
     @Override
     void exec() throws IOException {
         Walk inputWalk = new Walk(inputDir).includes(GLOB_CLASS_FILES);
@@ -79,7 +85,7 @@ public class ModifyBytecodeMojo extends SafeMojo{
     }
 
     /**
-     * Copy .class file if it has @Versionized annotation.
+     * Copy and edit .class file only if it annotated by {@code @Versionized}.
      * @return input path and output paths of .class in ASM format (relative path without extension)
      */
     private Optional<Map.Entry<String, String>> copyIfVersionized(Path inputPath) {
@@ -142,6 +148,9 @@ public class ModifyBytecodeMojo extends SafeMojo{
         return relativePath.substring(0, relativePath.length() - EXTENSION_CLASS.length());
     }
 
+    /**
+     * Copy and edit .class file only if it uses classes annotated with {@code Versionized}
+     */
     private void copyUsagesVersionized(Path inputPath, final Map<String, String> versionizedAsmMap) {
         ClassReader classReader;
         try {
@@ -174,6 +183,9 @@ public class ModifyBytecodeMojo extends SafeMojo{
         }
     }
 
+    /**
+     * Edit copied classes which are annotated by {@code @Versionized}
+     */
     private void renameUsagesInVersionized(Path outputPath, Map<String, String> versionizedAsmMap) {
         ClassReader classReader;
         try{
