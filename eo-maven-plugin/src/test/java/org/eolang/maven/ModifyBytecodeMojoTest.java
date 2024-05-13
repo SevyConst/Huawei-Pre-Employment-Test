@@ -34,31 +34,40 @@ import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldNode;
 
-import javax.tools.*;
-import java.io.*;
-import java.nio.file.*;
+import javax.tools.JavaCompiler;
+import javax.tools.JavaFileObject;
+import javax.tools.StandardJavaFileManager;
+import javax.tools.ToolProvider;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.stream.Collectors;
 
 public class ModifyBytecodeMojoTest {
 
-    private static final Path RELATIVE_INPUT_DIR = Paths.get("target/classes");
-    private static final Path RELATIVE_OUTPUT_DIR = Paths.get("target/modified-classes");
-    private static final String HASH = "qwerty";
-
-    public static final Path SRC = Paths.get("src/test/resources/org/eolang/maven/bytecode-modification/java-files");
-
+    public static final Path SRC =
+            Paths.get("src/test/resources/org/eolang/maven/bytecode-modification/java-files" );
     public static final String EXTENSION_JAVA = ".java";
-    private static final Set<String> GLOB_JAVA_FILES = new SetOf<>("**/*.java");
+    private static final Path RELATIVE_INPUT_DIR = Paths.get("target/classes" );
+    private static final Path RELATIVE_OUTPUT_DIR = Paths.get("target/modified-classes" );
+    private static final String HASH = "qwerty";
+    private static final Set<String> GLOB_JAVA_FILES = new SetOf<>("**/*.java" );
 
     private static final String SUPER_CLASS_DEFAULT_CHECK = "SUPER_CLASS_DEFAULT_CHECK";
     private static final String INTERFACES_DEFAULT_CHECK = "INTERFACES_DEFAULT_CHECK";
     private static final String MODULE_DEFAULT_CHECK = "MODULE_DEFAULT_CHECK";
     private static final String OUTER_CLASS_DEFAULT_CHECK = "OUTER_CLASS_DEFAULT_CHECK";
-    private static final String VISIBLE_ANNOTATIONS_DEFAULT_CHECK = "VISIBLE_ANNOTATIONS_DEFAULT_CHECK";
-    private static final String INVISIBLE_ANNOTATIONS_DEFAULT_CHECK = "INVISIBLE_ANNOTATIONS_DEFAULT_CHECK";
-    private static final String VISIBLE_TYPE_ANNOTATIONS_DEFAULT_CHECK = "VISIBLE_TYPE_ANNOTATIONS_DEFAULT_CHECK";
-    private static final String INVISIBLE_TYPE_ANNOTATIONS_DEFAULT_CHECK = "INVISIBLE_TYPE_ANNOTATIONS_DEFAULT_CHECK";
+    private static final String VISIBLE_ANNOTATIONS_DEFAULT_CHECK =
+            "VISIBLE_ANNOTATIONS_DEFAULT_CHECK";
+    private static final String INVISIBLE_ANNOTATIONS_DEFAULT_CHECK =
+            "INVISIBLE_ANNOTATIONS_DEFAULT_CHECK";
+    private static final String VISIBLE_TYPE_ANNOTATIONS_DEFAULT_CHECK =
+            "VISIBLE_TYPE_ANNOTATIONS_DEFAULT_CHECK";
+    private static final String INVISIBLE_TYPE_ANNOTATIONS_DEFAULT_CHECK =
+            "INVISIBLE_TYPE_ANNOTATIONS_DEFAULT_CHECK";
     private static final String ATTRS_DEFAULT_CHECK = "ATTRS_DEFAULT_CHECK";
     private static final String INNER_CLASSES_DEFAULT_CHECK = "INNER_CLASSES_DEFAULT_CHECK";
     private static final String NEST_HOST_CLASS_DEFAULT_CHECK = "NEST_HOST_CLASS_DEFAULT_CHECK";
@@ -73,20 +82,34 @@ public class ModifyBytecodeMojoTest {
     private static final String INPUT_ASM_C = "org/eolang/C";
     private static final String ASM_DESC_C = asmNameToAsmDesc(INPUT_ASM_C, false);
     private static final String INPUT_ASM_VERSIONIZED = "org/eolang/Versionized";
-    private static final String ASM_DESC_VERSIONIZED = asmNameToAsmDesc(INPUT_ASM_VERSIONIZED, false);
+    private static final String ASM_DESC_VERSIONIZED =
+            asmNameToAsmDesc(INPUT_ASM_VERSIONIZED, false);
 
-    private static final String INPUT_ASM_ANNOTATION_WITH_VERSIONIZED = "org/eolang/other/AnnotationWithVersionized";
+    private static final String INPUT_ASM_ANNOTATION_WITH_VERSIONIZED =
+            "org/eolang/other/AnnotationWithVersionized";
     private static final String ASM_DESC_ANNOTATION_TARGET = "Ljava/lang/annotation/Target;";
     private static final String ASM_DESC_ANNOTATION_RETENTION = "Ljava/lang/annotation/Retention;";
     private static final String ASM_DESC_INTERFACE_ANNOTATION = "java/lang/annotation/Annotation";
     private static final String INPUT_ASM_INTERFACE = "org/eolang/other/Interface";
     private static final String INPUT_ASM_TEST_INNER_CLASS = "org/eolang/other/TestInnerClass";
-    private static final String INPUT_ASM_INNER_CLASS = "org/eolang/other/TestInnerClass$InnerClass";
-    private static final String INPUT_ASM_TEST_STATIC_NESTED_CLASS = "org/eolang/other/TestStaticNestedClass";
+    private static final String INPUT_ASM_INNER_CLASS =
+            "org/eolang/other/TestInnerClass$InnerClass";
+    private static final String INPUT_ASM_TEST_STATIC_NESTED_CLASS =
+            "org/eolang/other/TestStaticNestedClass";
     private static final String INPUT_ASM_STATIC_NESTED_CLASS =
             "org/eolang/other/TestStaticNestedClass$StaticNestedClass";
     private static final String INPUT_ASM_TEST_INNER_CLASS_2 = "org/eolang/other/TestInnerClass2";
-    private static final String INPUT_ASM_INNER_CLASS_2 = "org/eolang/other/TestInnerClass2$InnerClass2";
+    private static final String INPUT_ASM_INNER_CLASS_2 =
+            "org/eolang/other/TestInnerClass2$InnerClass2";
+
+    private static String asmNameToAsmDesc(String asmName, boolean isVersionized) {
+        StringBuilder sb = new StringBuilder("L" );
+        if (isVersionized) {
+            sb.append(HASH + ASM_SLASH);
+        }
+        sb.append(asmName);
+        return sb.append(";" ).toString();
+    }
 
     /**
      * 1. Read the special .java files from the resources path.
@@ -141,7 +164,8 @@ public class ModifyBytecodeMojoTest {
                 .with("hash", HASH)
                 .execute(ModifyBytecodeMojo.class);
 
-        Collection<Path> outputPaths = new Walk(outputDirPath).includes(ModifyBytecodeMojo.GLOB_CLASS_FILES);
+        Collection<Path> outputPaths = new Walk(outputDirPath)
+                .includes(ModifyBytecodeMojo.GLOB_CLASS_FILES);
         Set<String> unfoundInputAsmNames = new HashSet<>(inputAsmNames);
         for (String inputAsmName : inputAsmNames) {
             switch (inputAsmName) {
@@ -187,14 +211,14 @@ public class ModifyBytecodeMojoTest {
 
         MatcherAssert.assertThat(
                 "Can't check input classes: " + unfoundInputAsmNames,
-                unfoundInputAsmNames.size(),
-                Matchers.equalTo(0)
+                unfoundInputAsmNames.isEmpty(),
+                Matchers.equalTo(true)
         );
 
         MatcherAssert.assertThat(
                 "Irrelevant output classes: " + outputPaths,
-                outputPaths.size(),
-                Matchers.equalTo(0)
+                outputPaths.isEmpty(),
+                Matchers.equalTo(true)
         );
     }
 
@@ -215,7 +239,7 @@ public class ModifyBytecodeMojoTest {
         List<File> filesToCompile = pathsToCompile.stream().map(Path::toFile).collect(Collectors.toList());
         Iterable<? extends JavaFileObject> compilationUnits = fileManager.getJavaFileObjectsFromFiles(filesToCompile);
         List<String> javacOptions = new ArrayList<>();
-        javacOptions.add("-d");
+        javacOptions.add("-d" );
         javacOptions.add(dirWithInputClassFiles.toAbsolutePath().toString());
         compiler.getTask(
                 null,
@@ -301,8 +325,8 @@ public class ModifyBytecodeMojoTest {
             MatcherAssert.assertThat(
                     "The output class for " + inputAsmName + " has irrelevant inner classes. "
                             + classNode.innerClasses,
-                    classNode.innerClasses.size(),
-                    Matchers.equalTo(0)
+                    classNode.innerClasses.isEmpty(),
+                    Matchers.equalTo(true)
             );
         }
 
@@ -310,8 +334,8 @@ public class ModifyBytecodeMojoTest {
             MatcherAssert.assertThat(
                     "The output class for " + inputAsmName + " has irrelevant interfaces. "
                             + classNode.interfaces,
-                    classNode.interfaces.size(),
-                    Matchers.equalTo(0)
+                    classNode.interfaces.isEmpty(),
+                    Matchers.equalTo(true)
             );
         }
 
@@ -348,7 +372,7 @@ public class ModifyBytecodeMojoTest {
 
         if (defaultClassChecks.contains(NEST_HOST_CLASS_DEFAULT_CHECK)) {
             MatcherAssert.assertThat(
-                    "The output class for " + inputAsmName +  " has nest host class",
+                    "The output class for " + inputAsmName + " has nest host class",
                     classNode.nestHostClass,
                     Matchers.equalTo(null)
             );
@@ -500,7 +524,7 @@ public class ModifyBytecodeMojoTest {
 
     private void checkFileA(
             String inputAsmName,
-            Collection <Path> outputPaths,
+            Collection<Path> outputPaths,
             Path outputDirPath
     ) throws IOException {
 
@@ -622,9 +646,9 @@ public class ModifyBytecodeMojoTest {
     }
 
     private void checkFileInterfaceUsage(
-        String inputAsmName,
-        Collection<Path> outputPaths,
-        Path outputDirPath
+            String inputAsmName,
+            Collection<Path> outputPaths,
+            Path outputDirPath
     ) throws IOException {
 
         Set<String> defaultClassChecks = getAllDefaultClassChecks();
@@ -894,7 +918,7 @@ public class ModifyBytecodeMojoTest {
 
         MatcherAssert.assertThat(
                 "The output class for " + inputAsmName + " has wrong number of nested members. "
-                + classNode.nestMembers,
+                        + classNode.nestMembers,
                 classNode.nestMembers.size(),
                 Matchers.equalTo(1)
         );
@@ -954,14 +978,5 @@ public class ModifyBytecodeMojoTest {
                 classNode.methods.size(),
                 Matchers.equalTo(1)
         );
-    }
-
-    private static String asmNameToAsmDesc(String asmName, boolean isVersionized) {
-        StringBuilder sb = new StringBuilder("L");
-        if (isVersionized) {
-            sb.append(HASH + ASM_SLASH);
-        }
-        sb.append(asmName);
-        return sb.append(";").toString();
     }
 }

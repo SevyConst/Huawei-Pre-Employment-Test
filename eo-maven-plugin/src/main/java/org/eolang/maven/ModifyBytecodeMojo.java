@@ -34,11 +34,15 @@ import org.objectweb.asm.commons.SimpleRemapper;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.*;
-import java.util.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.AbstractMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
-public class ModifyBytecodeMojo extends SafeMojo{
+public class ModifyBytecodeMojo extends SafeMojo {
 
     public static final String PATH_TO_VERSIONIZED =
             "Lorg" + File.separator + "eolang" + File.separator + "Versionized;";
@@ -61,12 +65,20 @@ public class ModifyBytecodeMojo extends SafeMojo{
     private String hash;
 
     /**
+     * Obtain relative path without file extension.
+     */
+    public static String pathToAsmName(Path path, Path dir) {
+        String relativePath = dir.relativize(path).toString();
+        return relativePath.substring(0, relativePath.length() - EXTENSION_CLASS.length());
+    }
+
+    /**
      * The core of the algorithm - three steps or 3 methods:
      * {@link ModifyBytecodeMojo#copyIfVersionized(Path)}
      * {@link ModifyBytecodeMojo#copyUsagesVersionized(Path, Map)}
      * {@link ModifyBytecodeMojo#renameUsagesInVersionized(Path, Map)}
      * See description of these method for more information
-      */
+     */
     @Override
     void exec() throws IOException {
         Walk inputWalk = new Walk(inputDir).includes(GLOB_CLASS_FILES);
@@ -86,6 +98,7 @@ public class ModifyBytecodeMojo extends SafeMojo{
 
     /**
      * Copy and edit .class file only if it annotated by {@code @Versionized}.
+     * @param inputPath - input file
      * @return input path and output paths of .class in ASM format (relative path without extension)
      */
     private Optional<Map.Entry<String, String>> copyIfVersionized(Path inputPath) {
@@ -107,9 +120,10 @@ public class ModifyBytecodeMojo extends SafeMojo{
 
         String inputAsm = pathToAsmName(inputPath, this.inputDir);
         String outputAsm = this.hash + File.separator + inputAsm;
-        // TODO: remove variable ClassRemapper
-        ClassRemapper classRemapper =
-                new ClassRemapper(classWriter, new SimpleRemapper(inputAsm, outputAsm));
+        // TODO: optimize (variable ClassRemapper)
+        ClassRemapper classRemapper = new ClassRemapper(
+                classWriter,
+                new SimpleRemapper(inputAsm, outputAsm));
         classReader.accept(classRemapper, 0);
 
         Path outputPath = this.outputDir.resolve(outputAsm + EXTENSION_CLASS);
@@ -124,34 +138,14 @@ public class ModifyBytecodeMojo extends SafeMojo{
         return Optional.of(new AbstractMap.SimpleEntry<>(inputAsm, outputAsm));
     }
 
-    static class VisitorVersionized extends ClassVisitor {
-        public VisitorVersionized() {
-            super(OPCODE_ASM_VERSION);
-        }
-
-        private boolean hasVersionized;
-
-        @Override
-        public AnnotationVisitor visitAnnotation(String desc, boolean visible) {
-            if (desc.equals(PATH_TO_VERSIONIZED)) {
-                hasVersionized = true;
-            }
-            return super.visitAnnotation(desc, visible);
-        }
-    }
-
-    /**
-     * Obtain relative path without file extension.
-     */
-    public static String pathToAsmName(Path path, Path dir) {
-        String relativePath = dir.relativize(path).toString();
-        return relativePath.substring(0, relativePath.length() - EXTENSION_CLASS.length());
-    }
-
     /**
      * Copy and edit .class file only if it uses classes annotated with {@code Versionized}
      */
-    private void copyUsagesVersionized(Path inputPath, final Map<String, String> versionizedAsmMap) {
+    private void copyUsagesVersionized(
+            Path inputPath,
+            final Map<String, String> versionizedAsmMap)
+    {
+
         ClassReader classReader;
         try {
             classReader = new ClassReader(Files.readAllBytes(inputPath));
@@ -161,10 +155,11 @@ public class ModifyBytecodeMojo extends SafeMojo{
         }
 
         String inputAsmName = pathToAsmName(inputPath, inputDir);
-        if (null != versionizedAsmMap.get(inputAsmName)) {
+        if (versionizedAsmMap.containsKey(inputAsmName)) {
             return;
         }
         ClassWriter classWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        // TODO: optimize (variable ClassRemapper)
         UsageRemapper usageRemapper = new UsageRemapper(versionizedAsmMap);
         ClassRemapper classRemapper = new ClassRemapper(classWriter, usageRemapper);
         classReader.accept(classRemapper, 0);
@@ -188,7 +183,7 @@ public class ModifyBytecodeMojo extends SafeMojo{
      */
     private void renameUsagesInVersionized(Path outputPath, Map<String, String> versionizedAsmMap) {
         ClassReader classReader;
-        try{
+        try {
             classReader = new ClassReader(Files.readAllBytes(outputPath));
         } catch (IOException e) {
             // TODO choose exception
@@ -196,6 +191,7 @@ public class ModifyBytecodeMojo extends SafeMojo{
         }
         ClassWriter classWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS);
 
+        // TODO: optimize (variable ClassRemapper)
         UsageRemapper usageRemapper = new UsageRemapper(versionizedAsmMap);
         ClassRemapper classRemapper = new ClassRemapper(classWriter, usageRemapper);
         classReader.accept(classRemapper, 0);
@@ -210,7 +206,23 @@ public class ModifyBytecodeMojo extends SafeMojo{
         }
     }
 
-    static class UsageRemapper extends Remapper{
+    static class VisitorVersionized extends ClassVisitor {
+        private boolean hasVersionized;
+
+        public VisitorVersionized() {
+            super(OPCODE_ASM_VERSION);
+        }
+
+        @Override
+        public AnnotationVisitor visitAnnotation(String desc, boolean visible) {
+            if (desc.equals(PATH_TO_VERSIONIZED)) {
+                hasVersionized = true;
+            }
+            return super.visitAnnotation(desc, visible);
+        }
+    }
+
+    static class UsageRemapper extends Remapper {
         private final Map<String, String> versionizedAsmMap;
         private boolean isChanged;
 
